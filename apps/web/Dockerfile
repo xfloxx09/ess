@@ -13,14 +13,16 @@ RUN apk add --no-cache libc6-compat \
   && corepack enable \
   && corepack prepare pnpm@9.12.0 --activate
 
+# Copy workspace manifest + lockfile + the whole shared package first.
+# (The root postinstall hook builds @ess/shared, so its sources must be
+# present before `pnpm install`.) App sources come after for cache reuse.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY tsconfig.base.json ./
-COPY packages/shared/package.json packages/shared/
+COPY packages/shared packages/shared
 COPY apps/web/package.json apps/web/
 
 RUN pnpm install --frozen-lockfile
 
-COPY packages/shared packages/shared
 COPY apps/web apps/web
 
 ARG NEXT_PUBLIC_API_BASE=""

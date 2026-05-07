@@ -14,16 +14,16 @@ RUN apk add --no-cache libc6-compat openssl python3 make g++ \
   && corepack enable \
   && corepack prepare pnpm@9.12.0 --activate
 
-# Copy workspace manifest + lockfile first to maximise Docker cache reuse.
+# Copy workspace manifest + lockfile + the whole shared package first.
+# (The root postinstall hook builds @ess/shared, so its sources must be
+# present before `pnpm install`.) App sources come after for cache reuse.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY tsconfig.base.json ./
-COPY packages/shared/package.json packages/shared/
+COPY packages/shared packages/shared
 COPY apps/api/package.json apps/api/
 
 RUN pnpm install --frozen-lockfile
 
-# Now copy sources and build.
-COPY packages/shared packages/shared
 COPY apps/api apps/api
 
 RUN pnpm --filter @ess/shared run build \
