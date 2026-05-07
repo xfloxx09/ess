@@ -2,6 +2,10 @@
   "name": "@ess/api",
   "version": "1.0.0",
   "private": true,
+  "files": [
+    "dist",
+    "prisma"
+  ],
   "scripts": {
     "predev": "pnpm --filter @ess/shared run build && pnpm prisma:generate",
     "dev": "nest start --watch",
