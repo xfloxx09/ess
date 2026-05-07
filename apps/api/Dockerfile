@@ -36,7 +36,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat openssl tini \
-  && addgroup -S nodejs && adduser -S nestjs -G nodejs
+  && addgroup -S nodejs && adduser -S nestjs -G nodejs \
+  && npm install -g prisma@5.22.0
 
 COPY --from=builder --chown=nestjs:nodejs /app/api /app
 COPY --from=builder --chown=nestjs:nodejs /repo/apps/api/prisma /app/prisma
@@ -50,4 +51,4 @@ USER nestjs
 # tini = clean signal handling (Railway sends SIGTERM on rolling deploys).
 ENTRYPOINT ["/sbin/tini", "--"]
 # If migrations exist, apply them; otherwise push the schema (first-time deploy).
-CMD ["sh", "-c", "if [ -d prisma/migrations ]; then node node_modules/prisma/build/index.js migrate deploy; else node node_modules/prisma/build/index.js db push --accept-data-loss --skip-generate; fi && node dist/main.js"]
+CMD ["sh", "-c", "if [ -d prisma/migrations ]; then prisma migrate deploy; else prisma db push --accept-data-loss --skip-generate; fi && node dist/main.js"]
