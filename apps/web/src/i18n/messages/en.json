@@ -1,0 +1,163 @@
+{
+  "app": {
+    "name": "ESS Platform",
+    "tagline": "Shift planning, sales & KPIs",
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search…",
+    "close": "Close",
+    "confirm": "Confirm",
+    "actions": "Actions",
+    "status": "Status",
+    "back": "Back",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "none": "None",
+    "noData": "No data",
+    "errors": {
+      "generic": "Something went wrong.",
+      "network": "Network error – API unreachable."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Sign in to your ESS account",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "forgot": "Forgot password?",
+      "demo": "Demo accounts: admin / agent / controlling @ess.local · ChangeMe123!"
+    },
+    "logout": "Sign out",
+    "forgot": {
+      "title": "Reset password",
+      "submit": "Send reset link",
+      "success": "If the account exists, a link has been sent."
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "agentSales": "Sales",
+    "agentCalendar": "Calendar",
+    "agentView": "My month",
+    "agentShiftplan": "My shifts",
+    "controllingReview": "Review",
+    "controllingAntraege": "Requests",
+    "controllingRosterDay": "Roster – Day",
+    "controllingRosterMonth": "Roster – Month",
+    "controllingImports": "Imports",
+    "controllingReports": "Reports",
+    "adminUsers": "Users",
+    "adminCatalog": "Catalog",
+    "adminCalendarRules": "Calendar rules",
+    "adminConfig": "Configuration",
+    "adminOrgAccess": "Org & roles",
+    "adminAudit": "Audit log"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalPayout": "Total payout",
+    "agreement": "Agreement",
+    "topAgents": "Top agents",
+    "salesByProject": "Sales by project"
+  },
+  "sales": {
+    "title": "Sales entries",
+    "create": "New sale",
+    "month": "Monthly view",
+    "table": {
+      "date": "Date",
+      "project": "Project",
+      "product": "Product",
+      "quantity": "Qty",
+      "contractRef": "Contract",
+      "orderRef": "Order",
+      "agent": "Agent",
+      "premium": "Premium"
+    }
+  },
+  "calendar": {
+    "title": "Calendar",
+    "bookingType": "Booking type",
+    "policy": {
+      "lead": "Vacation must be booked at least {days} days ahead.",
+      "currentMonth": "Vacation in current month: {allowed, select, true {allowed} other {locked}}.",
+      "multiDay": "Multi-day booking: {allowed, select, true {on} other {off}}."
+    }
+  },
+  "roster": {
+    "title": "Roster day",
+    "project": "Project",
+    "team": "Team",
+    "day": "Day",
+    "tools": {
+      "paint": "Paint code",
+      "mirror": "Mirror raw",
+      "preserveRaw": "Preserve raw code",
+      "save": "Save changes"
+    },
+    "codes": "Codes",
+    "noProject": "No project selected"
+  },
+  "antraege": {
+    "title": "Requests",
+    "type": {
+      "STOERUNG": "Disruption",
+      "MEETING": "Meeting"
+    },
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "imports": {
+    "title": "CSV imports",
+    "fileName": "File name",
+    "kind": {
+      "GENERIC": "Generic",
+      "KPI_DAILY": "KPI Daily",
+      "SALES": "Sales"
+    },
+    "dryRun": "Preview",
+    "commit": "Import",
+    "history": "History"
+  },
+  "users": {
+    "title": "Users",
+    "create": "New user",
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "team": "Team",
+      "active": "Active",
+      "lastLogin": "Last login"
+    }
+  },
+  "audit": {
+    "title": "Audit log",
+    "actor": "Actor",
+    "action": "Action",
+    "resource": "Resource",
+    "exportCsv": "Export CSV"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No new notifications",
+    "kind": {
+      "ANTRAG_CREATED": "Request created",
+      "ANTRAG_APPROVED": "Request approved",
+      "ANTRAG_REJECTED": "Request rejected",
+      "ROSTER_CHANGED": "Roster updated",
+      "IMPORT_COMPLETED": "Import completed",
+      "IMPORT_FAILED": "Import failed",
+      "SYSTEM": "System"
+    }
+  }
+}

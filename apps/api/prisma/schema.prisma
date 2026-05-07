@@ -1,0 +1,580 @@
+// ESS Platform - Prisma schema
+//
+// Naming conventions:
+//   - Model names PascalCase singular ("User", "ShiftplanCell")
+//   - Field names camelCase
+//   - Database column/table names use Prisma defaults (PascalCase models map to PascalCase tables)
+//
+// Time semantics:
+//   - All timestamps are stored as `DateTime` in UTC.
+//   - Calendar/shiftplan "date" fields representing a single day are kept as `String`
+//     in `YYYY-MM-DD` to keep math/string filtering identical to the previous in-memory version.
+//   - "month" keys for booking windows are `String` in `YYYY-MM`.
+//
+// Optimistic locking:
+//   - Mutable per-row entities (CalendarBooking, ShiftplanCell, Antrag) carry `version Int @default(1)`.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  AGENT
+  ADMIN
+  CONTROLLING
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  passwordHash   String
+  fullName       String
+  role           UserRole
+  hourlyRateEuro Float      @default(0)
+  active         Boolean    @default(true)
+  locale         String     @default("de")
+  teamId         String?
+  team           Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  lastLoginAt    DateTime?
+  deletedAt      DateTime?
+
+  sessions             Session[]
+  passwordResets       PasswordResetToken[]
+  accessRoleAssignments UserAccessRole[]
+  salesEntries         SalesEntry[]            @relation("AgentSales")
+  calendarBookings     CalendarBooking[]       @relation("AgentBookings")
+  calendarHistory      CalendarHistory[]       @relation("AgentCalendarHistory")
+  shiftplanCells       ShiftplanCell[]         @relation("AgentShiftCells")
+  shiftplanHistory     ShiftplanHistory[]      @relation("AgentShiftHistory")
+  antraege             Antrag[]                @relation("AgentAntraege")
+  antraegeCreated      Antrag[]                @relation("AntragCreator")
+  antraegeDecided      Antrag[]                @relation("AntragDecider")
+  antragHistoryAuthor  AntragHistory[]         @relation("AntragHistoryActor")
+  notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
+  auditLogs            AuditLog[]
+  importJobs           ImportJob[]
+  kpiDailyValues       KpiDailyValue[]
+
+  @@index([role])
+  @@index([teamId])
+  @@index([deletedAt])
+}
+
+model Session {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String  @unique
+  userAgent       String?
+  ipAddress       String?
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Organisation hierarchy
+// ---------------------------------------------------------------------------
+
+model Dienstleister {
+  id          String       @id @default(cuid())
+  name        String
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  abteilungen Abteilung[]
+}
+
+model Abteilung {
+  id              String         @id @default(cuid())
+  name            String
+  active          Boolean        @default(true)
+  dienstleisterId String
+  dienstleister   Dienstleister  @relation(fields: [dienstleisterId], references: [id], onDelete: Restrict)
+  projects        Project[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([dienstleisterId])
+}
+
+model Project {
+  id          String     @id @default(cuid())
+  name        String
+  active      Boolean    @default(true)
+  abteilungId String
+  abteilung   Abteilung  @relation(fields: [abteilungId], references: [id], onDelete: Restrict)
+  teams       Team[]
+  premiums    ProductPremium[]
+  salesEntries SalesEntry[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([abteilungId])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  agents    User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Access control (custom roles + view keys + org scopes)
+// ---------------------------------------------------------------------------
+
+enum OrgScopeResourceType {
+  DIENSTLEISTER
+  ABTEILUNG
+  PROJECT
+  TEAM
+}
+
+model AccessRole {
+  id           String              @id @default(cuid())
+  name         String
+  slug         String              @unique
+  description  String?
+  views        AccessRoleView[]
+  scopes       AccessRoleScope[]
+  assignments  UserAccessRole[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model AccessRoleView {
+  accessRoleId String
+  viewKey      String
+  accessRole   AccessRole @relation(fields: [accessRoleId], references: [id], onDelete: Cascade)
+
+  @@id([accessRoleId, viewKey])
+}
+
+model AccessRoleScope {
+  accessRoleId String
+  resourceType OrgScopeResourceType
+  resourceId   String
+  accessRole   AccessRole           @relation(fields: [accessRoleId], references: [id], onDelete: Cascade)
+
+  @@id([accessRoleId, resourceType, resourceId])
+  @@index([resourceType, resourceId])
+}
+
+model UserAccessRole {
+  userId       String
+  accessRoleId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessRole   AccessRole @relation(fields: [accessRoleId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime   @default(now())
+
+  @@id([userId, accessRoleId])
+  @@index([accessRoleId])
+}
+
+// ---------------------------------------------------------------------------
+// Catalog: products, premiums, booking types, codes, rates
+// ---------------------------------------------------------------------------
+
+model Product {
+  id        String    @id @default(cuid())
+  name      String
+  category  String
+  active    Boolean   @default(true)
+  premiums  ProductPremium[]
+  salesEntries SalesEntry[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model ProductPremium {
+  id         String  @id @default(cuid())
+  projectId  String
+  productId  String
+  amountEuro Float
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, productId])
+  @@index([projectId])
+}
+
+enum BookingCategory {
+  SHIFT
+  VACATION
+  SICK
+}
+
+model BookingType {
+  id               String           @id @default(cuid())
+  label            String
+  code             String           @unique
+  category         BookingCategory
+  emoji            String?
+  color            String           @default("#3498db")
+  allowsSplitShift Boolean          @default(false)
+  active           Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  bookings         CalendarBooking[]
+}
+
+model CalendarPolicy {
+  id                                String   @id @default("singleton")
+  normalVacationLeadDays            Int      @default(30)
+  allowNormalVacationCurrentMonth   Boolean  @default(false)
+  allowMultiDayBooking              Boolean  @default(false)
+  updatedAt                         DateTime @updatedAt
+}
+
+model BookingWindow {
+  id          String   @id @default(cuid())
+  month       String   @unique
+  opensAtIso  String
+  closesAtIso String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ShiftRule {
+  id              String   @id @default(cuid())
+  active          Boolean  @default(true)
+  minFirstHours   Float
+  maxFirstHours   Float
+  minPauseHours   Float
+  maxPauseHours   Float
+  minSecondHours  Float
+  maxSecondHours  Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active])
+}
+
+model RateTable {
+  id          String   @id @default(cuid())
+  shiftType   String   @unique
+  euroPerHour Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model QuarterHourCode {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  label           String
+  color           String
+  valueMultiplier Float    @default(1)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Operational data
+// ---------------------------------------------------------------------------
+
+model SalesEntry {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       User     @relation("AgentSales", fields: [agentId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Int
+  callDate    String   // YYYY-MM-DD
+  contractRef String?
+  orderRef    String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([agentId, callDate])
+  @@index([projectId, callDate])
+  @@index([callDate])
+}
+
+model CalendarBooking {
+  id            String          @id @default(cuid())
+  agentId       String
+  agent         User            @relation("AgentBookings", fields: [agentId], references: [id], onDelete: Cascade)
+  date          String          // YYYY-MM-DD
+  bookingTypeId String
+  bookingType   BookingType     @relation(fields: [bookingTypeId], references: [id], onDelete: Restrict)
+  blocks        Json
+  version       Int             @default(1)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  history       CalendarHistory[]
+
+  @@unique([agentId, date])
+  @@index([date])
+}
+
+enum HistoryAction {
+  UPSERT
+  DELETE
+}
+
+model CalendarHistory {
+  id        String          @id @default(cuid())
+  bookingId String
+  booking   CalendarBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  agentId   String
+  agent     User            @relation("AgentCalendarHistory", fields: [agentId], references: [id], onDelete: Cascade)
+  date      String
+  action    HistoryAction
+  version   Int
+  payload   Json
+  createdAt DateTime        @default(now())
+
+  @@index([agentId, date])
+  @@index([bookingId])
+}
+
+model ShiftplanCell {
+  id             String   @id @default(cuid())
+  agentId        String
+  agent          User     @relation("AgentShiftCells", fields: [agentId], references: [id], onDelete: Cascade)
+  date           String   // YYYY-MM-DD
+  slotIndex      Int      // 0..95 (15-min slots in a day)
+  controllerCode String
+  rawCode        String
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([agentId, date, slotIndex])
+  @@index([date, slotIndex])
+}
+
+model ShiftplanHistory {
+  id        String   @id @default(cuid())
+  cellId    String
+  agentId   String
+  agent     User     @relation("AgentShiftHistory", fields: [agentId], references: [id], onDelete: Cascade)
+  date      String
+  slotIndex Int
+  action    HistoryAction
+  version   Int
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([agentId, date])
+  @@index([cellId])
+}
+
+enum AntragType {
+  STOERUNG
+  MEETING
+}
+
+enum AntragStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Antrag {
+  id              String          @id @default(cuid())
+  agentId         String
+  agent           User            @relation("AgentAntraege", fields: [agentId], references: [id], onDelete: Cascade)
+  date            String          // YYYY-MM-DD
+  fromSlot        Int
+  toSlot          Int
+  type            AntragType
+  status          AntragStatus    @default(PENDING)
+  note            String?
+  createdByUserId String
+  createdByUser   User            @relation("AntragCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  decidedByUserId String?
+  decidedByUser   User?           @relation("AntragDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  decidedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  history         AntragHistory[]
+
+  @@index([agentId, date])
+  @@index([status])
+}
+
+enum AntragHistoryAction {
+  CREATED
+  APPROVED
+  REJECTED
+  UPDATED
+}
+
+model AntragHistory {
+  id           String              @id @default(cuid())
+  antragId     String
+  antrag       Antrag              @relation(fields: [antragId], references: [id], onDelete: Cascade)
+  agentId      String
+  action       AntragHistoryAction
+  actorUserId  String
+  actor        User                @relation("AntragHistoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  payload      Json
+  createdAt    DateTime            @default(now())
+
+  @@index([antragId])
+  @@index([agentId])
+}
+
+model KpiDailyValue {
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        User     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  date         String   // YYYY-MM-DD
+  minuteIb     Int      @default(0)
+  minuteOb     Int      @default(0)
+  waitMinutes  Int      @default(0)
+  salesEuro    Float    @default(0)
+  npsEuro      Float    @default(0)
+  source       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([agentId, date])
+  @@index([date])
+}
+
+// ---------------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------------
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ImportKind {
+  KPI_DAILY
+  SALES
+  GENERIC
+}
+
+model ImportJob {
+  id            String       @id @default(cuid())
+  kind          ImportKind   @default(GENERIC)
+  fileName      String
+  source        String?
+  status        ImportStatus @default(PENDING)
+  uploadedById  String
+  uploadedBy    User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  rowsTotal     Int          @default(0)
+  rowsAccepted  Int          @default(0)
+  rowsRejected  Int          @default(0)
+  message       String?
+  mapping       Json?
+  createdAt     DateTime     @default(now())
+  finishedAt    DateTime?
+  rows          ImportRow[]
+
+  @@index([uploadedById])
+  @@index([status])
+}
+
+model ImportRow {
+  id        String     @id @default(cuid())
+  jobId     String
+  job       ImportJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rowIndex  Int
+  payload   Json
+  accepted  Boolean    @default(false)
+  errors    String?
+  createdAt DateTime   @default(now())
+
+  @@index([jobId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications + Audit
+// ---------------------------------------------------------------------------
+
+enum NotificationKind {
+  ANTRAG_CREATED
+  ANTRAG_APPROVED
+  ANTRAG_REJECTED
+  ROSTER_CHANGED
+  IMPORT_COMPLETED
+  IMPORT_FAILED
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  title     String
+  body      String?
+  link      String?
+  payload   Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  userId  String
+  kind    NotificationKind
+  enabled Boolean          @default(true)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  resource    String
+  resourceId  String?
+  payload     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+}

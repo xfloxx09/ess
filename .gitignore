@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Generated Prisma client
+**/prisma/generated/
+
+# Local env files (do NOT commit secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs / caches
+*.log
+.cache/
+.eslintcache
+
+# Test artefacts
+coverage/
+.test-results/
+playwright-report/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+Thumbs.db
+
+# pnpm lockfile is committed; ensure no nested ones leak
+apps/*/pnpm-lock.yaml
+packages/*/pnpm-lock.yaml

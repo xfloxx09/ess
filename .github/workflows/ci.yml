@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ess
+          POSTGRES_PASSWORD: ess
+          POSTGRES_DB: ess
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ess:ess@localhost:5432/ess
+      JWT_ACCESS_SECRET: 0123456789abcdef0123456789abcdef
+      JWT_REFRESH_SECRET: 0123456789abcdef0123456789abcdef
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared
+        run: pnpm --filter @ess/shared run build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @ess/api run prisma:generate
+
+      - name: Migrate database
+        run: pnpm --filter @ess/api run db:deploy
+
+      - name: Lint API
+        run: pnpm --filter @ess/api run lint
+
+      - name: Lint Web
+        run: pnpm --filter @ess/web run lint
+
+      - name: Build API
+        run: pnpm --filter @ess/api run build
+
+      - name: Build Web
+        env:
+          NEXT_PUBLIC_API_BASE: ""
+        run: pnpm --filter @ess/web run build
+
+      - name: Tests
+        run: pnpm test

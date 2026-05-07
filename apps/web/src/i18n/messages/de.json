@@ -1,0 +1,163 @@
+{
+  "app": {
+    "name": "ESS Plattform",
+    "tagline": "Schichtplanung, Sales & KPIs",
+    "loading": "Wird geladen…",
+    "saving": "Speichern…",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Anlegen",
+    "search": "Suchen…",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "actions": "Aktionen",
+    "status": "Status",
+    "back": "Zurück",
+    "yes": "Ja",
+    "no": "Nein",
+    "all": "Alle",
+    "none": "Keine",
+    "noData": "Keine Daten",
+    "errors": {
+      "generic": "Etwas ist schiefgelaufen.",
+      "network": "Netzwerkfehler – API nicht erreichbar."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Anmelden",
+      "subtitle": "Mit Ihrem ESS-Konto anmelden",
+      "email": "E-Mail",
+      "password": "Passwort",
+      "submit": "Einloggen",
+      "forgot": "Passwort vergessen?",
+      "demo": "Demo-Konten: admin / agent / controlling @ess.local · ChangeMe123!"
+    },
+    "logout": "Abmelden",
+    "forgot": {
+      "title": "Passwort zurücksetzen",
+      "submit": "Reset-Link anfordern",
+      "success": "Wenn das Konto existiert, wurde ein Link versendet."
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "agentSales": "Sales",
+    "agentCalendar": "Terminkalender",
+    "agentView": "Mein Monat",
+    "agentShiftplan": "Mein Schichtplan",
+    "controllingReview": "Review",
+    "controllingAntraege": "Anträge",
+    "controllingRosterDay": "Schichtplan – Tag",
+    "controllingRosterMonth": "Schichtplan – Monat",
+    "controllingImports": "Importe",
+    "controllingReports": "Reports",
+    "adminUsers": "Benutzer",
+    "adminCatalog": "Katalog",
+    "adminCalendarRules": "Kalenderregeln",
+    "adminConfig": "Konfiguration",
+    "adminOrgAccess": "Organisation & Rollen",
+    "adminAudit": "Audit-Log"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalPayout": "Auszahlungssumme",
+    "agreement": "Übereinstimmung",
+    "topAgents": "Top-Agenten",
+    "salesByProject": "Sales pro Projekt"
+  },
+  "sales": {
+    "title": "Sales-Erfassung",
+    "create": "Neuer Verkauf",
+    "month": "Monatsübersicht",
+    "table": {
+      "date": "Datum",
+      "project": "Projekt",
+      "product": "Produkt",
+      "quantity": "Menge",
+      "contractRef": "Vertrag",
+      "orderRef": "Auftrag",
+      "agent": "Agent",
+      "premium": "Prämie"
+    }
+  },
+  "calendar": {
+    "title": "Terminkalender",
+    "bookingType": "Buchungstyp",
+    "policy": {
+      "lead": "Urlaub mind. {days} Tage im Voraus.",
+      "currentMonth": "Urlaub im laufenden Monat: {allowed, select, true {erlaubt} other {gesperrt}}.",
+      "multiDay": "Mehrtagsbuchung: {allowed, select, true {an} other {aus}}."
+    }
+  },
+  "roster": {
+    "title": "Schichtplan-Tag",
+    "project": "Projekt",
+    "team": "Team",
+    "day": "Tag",
+    "tools": {
+      "paint": "Code malen",
+      "mirror": "Raw spiegeln",
+      "preserveRaw": "Raw-Code behalten",
+      "save": "Änderungen speichern"
+    },
+    "codes": "Codes",
+    "noProject": "Kein Projekt ausgewählt"
+  },
+  "antraege": {
+    "title": "Anträge",
+    "type": {
+      "STOERUNG": "Störung",
+      "MEETING": "Meeting"
+    },
+    "approve": "Genehmigen",
+    "reject": "Ablehnen"
+  },
+  "imports": {
+    "title": "CSV-Importe",
+    "fileName": "Dateiname",
+    "kind": {
+      "GENERIC": "Generisch",
+      "KPI_DAILY": "KPI Daily",
+      "SALES": "Sales"
+    },
+    "dryRun": "Vorschau",
+    "commit": "Importieren",
+    "history": "Historie"
+  },
+  "users": {
+    "title": "Benutzer",
+    "create": "Neuer Benutzer",
+    "table": {
+      "name": "Name",
+      "email": "E-Mail",
+      "role": "Rolle",
+      "team": "Team",
+      "active": "Aktiv",
+      "lastLogin": "Letzte Anmeldung"
+    }
+  },
+  "audit": {
+    "title": "Audit-Log",
+    "actor": "Akteur",
+    "action": "Aktion",
+    "resource": "Ressource",
+    "exportCsv": "CSV exportieren"
+  },
+  "notifications": {
+    "title": "Benachrichtigungen",
+    "markAllRead": "Alle als gelesen markieren",
+    "empty": "Keine neuen Benachrichtigungen",
+    "kind": {
+      "ANTRAG_CREATED": "Antrag erstellt",
+      "ANTRAG_APPROVED": "Antrag genehmigt",
+      "ANTRAG_REJECTED": "Antrag abgelehnt",
+      "ROSTER_CHANGED": "Schichtplan aktualisiert",
+      "IMPORT_COMPLETED": "Import abgeschlossen",
+      "IMPORT_FAILED": "Import fehlgeschlagen",
+      "SYSTEM": "System"
+    }
+  }
+}
