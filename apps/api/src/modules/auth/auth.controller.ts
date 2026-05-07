@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import type { Request, Response } from "express";
+import type { CookieOptions, Request, Response } from "express";
 import { loginSchema, passwordResetRequestSchema, passwordResetSchema } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import { env } from "../../common/env";
@@ -77,24 +77,22 @@ export class AuthController {
   }
 }
 
-function setRefreshCookie(res: Response, token: string, expiresAt: string) {
-  res.cookie(REFRESH_COOKIE, token, {
+function buildCookieOptions(expires: Date): CookieOptions {
+  const opts: CookieOptions = {
     httpOnly: true,
     secure: env.COOKIE_SECURE,
-    sameSite: "lax",
-    domain: env.COOKIE_DOMAIN,
-    expires: new Date(expiresAt),
+    sameSite: env.COOKIE_SAMESITE,
+    expires,
     path: "/",
-  });
+  };
+  if (env.COOKIE_DOMAIN) opts.domain = env.COOKIE_DOMAIN;
+  return opts;
+}
+
+function setRefreshCookie(res: Response, token: string, expiresAt: string) {
+  res.cookie(REFRESH_COOKIE, token, buildCookieOptions(new Date(expiresAt)));
 }
 
 function clearRefreshCookie(res: Response) {
-  res.cookie(REFRESH_COOKIE, "", {
-    httpOnly: true,
-    secure: env.COOKIE_SECURE,
-    sameSite: "lax",
-    domain: env.COOKIE_DOMAIN,
-    expires: new Date(0),
-    path: "/",
-  });
+  res.cookie(REFRESH_COOKIE, "", buildCookieOptions(new Date(0)));
 }

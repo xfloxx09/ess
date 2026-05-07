@@ -15,11 +15,18 @@ const envSchema = z.object({
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("30d"),
   CORS_ORIGINS: z.string().optional(),
-  COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_DOMAIN: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.trim().length > 0 ? value.trim() : undefined)),
   COOKIE_SECURE: z
     .string()
     .optional()
     .transform((value) => (value !== undefined ? value === "true" : isProd)),
+  COOKIE_SAMESITE: z
+    .enum(["lax", "strict", "none"])
+    .optional()
+    .transform((value) => value ?? (isProd ? "none" : "lax")),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   SEED_ON_BOOT: z
     .string()
