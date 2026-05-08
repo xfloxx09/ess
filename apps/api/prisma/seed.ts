@@ -351,6 +351,26 @@ async function main() {
     }
   }
 
+  const monthKey = currentMonthKey();
+  for (const row of [
+    { category: "Internet", calls: 120 },
+    { category: "Mobile", calls: 80 },
+    { category: "TV", calls: 40 },
+  ] as const) {
+    await prisma.kpiCategoryDaily.upsert({
+      where: { agentId_date_category: { agentId: agent.id, date: `${monthKey}-10`, category: row.category } },
+      create: {
+        agentId: agent.id,
+        date: `${monthKey}-10`,
+        category: row.category,
+        calls: row.calls,
+        conversions: null,
+        source: "import",
+      },
+      update: { calls: row.calls, source: "import" },
+    });
+  }
+
   await prisma.agentAnnouncement.upsert({
     where: { id: "ann-demo-welcome" },
     create: {

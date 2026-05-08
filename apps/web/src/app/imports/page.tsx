@@ -37,7 +37,7 @@ interface DryRunResult {
   sample: Array<Record<string, string>>;
 }
 
-type ImportKind = "GENERIC" | "KPI_DAILY" | "SALES";
+type ImportKind = "GENERIC" | "KPI_DAILY" | "KPI_CATEGORY_DAILY" | "SALES";
 
 export default function ImportsPage() {
   const auth = useRequireAuth({ anyViews: ["controlling_imports"] });
@@ -102,6 +102,7 @@ export default function ImportsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="KPI_DAILY">{t("imports.kind.KPI_DAILY")}</SelectItem>
+                    <SelectItem value="KPI_CATEGORY_DAILY">{t("imports.kind.KPI_CATEGORY_DAILY")}</SelectItem>
                     <SelectItem value="SALES">{t("imports.kind.SALES")}</SelectItem>
                     <SelectItem value="GENERIC">{t("imports.kind.GENERIC")}</SelectItem>
                   </SelectContent>
@@ -117,9 +118,11 @@ export default function ImportsPage() {
                 placeholder={
                   kind === "KPI_DAILY"
                     ? "email,date,minuteIb,minuteOb,waitMinutes,salesEuro,npsEuro\nagent@ess.local,2024-04-01,180,30,15,12.50,0"
-                    : kind === "SALES"
-                      ? "email,date,project,product,quantity,contractRef\nagent@ess.local,2024-04-01,GK CM KMU,Fiber Upgrade,1,V-1"
-                      : "header1,header2\nvalue1,value2"
+                    : kind === "KPI_CATEGORY_DAILY"
+                      ? "email,date,category,calls,conversions\nagent@ess.local,2024-04-01,Retention,42,3"
+                      : kind === "SALES"
+                        ? "email,date,project,product,quantity,contractRef\nagent@ess.local,2024-04-01,GK CM KMU,Fiber Upgrade,1,V-1"
+                        : "header1,header2\nvalue1,value2"
                 }
                 className="font-mono text-xs"
               />

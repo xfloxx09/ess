@@ -29,6 +29,13 @@ type AgentKpiTabResponse = {
       quantity: number;
       premiumEuro: number;
     }>;
+    crByCategory: Array<{
+      category: string;
+      calls: number;
+      conversions: number;
+      numeratorSource: "import" | "sales";
+      crPercent: number | null;
+    }>;
   };
   quality: {
     importDayCount: number;
@@ -132,6 +139,47 @@ export default function AgentKpiPage() {
                 <CardContent className="text-2xl font-semibold tabular-nums">{formatEuro(payload.sales.totalPremiumEuro)}</CardContent>
               </Card>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("agentWorkspace.kpiSalesCrTitle")}</CardTitle>
+                <CardDescription>{t("agentWorkspace.kpiSalesCrHint")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {payload.sales.crByCategory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t("agentWorkspace.kpiSalesCrEmpty")}</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("agentWorkspace.kpiSalesCrCategory")}</TableHead>
+                        <TableHead className="text-right">{t("agentWorkspace.kpiSalesCrCalls")}</TableHead>
+                        <TableHead className="text-right">{t("agentWorkspace.kpiSalesCrNumerator")}</TableHead>
+                        <TableHead className="text-right">{t("agentWorkspace.kpiSalesCrSource")}</TableHead>
+                        <TableHead className="text-right">{t("agentWorkspace.kpiSalesCrPercent")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {payload.sales.crByCategory.map((row, idx) => (
+                        <TableRow key={`${row.category}-${idx}`}>
+                          <TableCell className="font-medium">{row.category}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.calls}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.conversions}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {row.numeratorSource === "import"
+                              ? t("agentWorkspace.kpiSalesCrSourceImport")
+                              : t("agentWorkspace.kpiSalesCrSourceSales")}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.crPercent === null ? "—" : `${row.crPercent.toLocaleString(undefined, { maximumFractionDigits: 2 })} %`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>

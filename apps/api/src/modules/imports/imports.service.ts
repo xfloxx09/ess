@@ -50,6 +50,8 @@ export class ImportsService {
       try {
         if (input.kind === "KPI_DAILY") {
           await this.applyKpiRow(row, mapping);
+        } else if (input.kind === "KPI_CATEGORY_DAILY") {
+          await this.applyKpiCategoryRow(row, mapping);
         } else if (input.kind === "SALES") {
           await this.applySalesRow(row, mapping);
         }
@@ -147,6 +149,39 @@ export class ImportsService {
         waitMinutes: Number(get("waitMinutes") ?? 0) || 0,
         salesEuro: Number(get("salesEuro") ?? 0) || 0,
         npsEuro: Number(get("npsEuro") ?? 0) || 0,
+        source: "import",
+      },
+    });
+  }
+
+  private async applyKpiCategoryRow(row: Record<string, string>, mapping: Record<string, string>) {
+    const get = (key: string) => row[mapping[key] ?? key];
+    const email = get("email");
+    const date = get("date");
+    const categoryRaw = get("category");
+    if (!email || !date || !categoryRaw?.trim()) throw new Error("email, date and category required");
+    const agent = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (!agent) throw new Error(`agent not found: ${email}`);
+    const category = categoryRaw.trim();
+    const calls = Math.max(0, Math.floor(Number(get("calls") ?? 0) || 0));
+    const convRaw = get("conversions");
+    const conversions =
+      convRaw === undefined || convRaw === null || String(convRaw).trim() === ""
+        ? null
+        : Math.max(0, Math.floor(Number(convRaw) || 0));
+    await this.prisma.kpiCategoryDaily.upsert({
+      where: { agentId_date_category: { agentId: agent.id, date, category } },
+      create: {
+        agentId: agent.id,
+        date,
+        category,
+        calls,
+        conversions,
+        source: "import",
+      },
+      update: {
+        calls,
+        conversions,
         source: "import",
       },
     });

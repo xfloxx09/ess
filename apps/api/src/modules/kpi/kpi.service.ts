@@ -231,7 +231,7 @@ export class KpiService {
    * Agent KPI tab: sales aggregates from Sales Erfassung; quality from CSV-backed `KpiDailyValue` (source import).
    */
   async getAgentKpiTabData(agentId: string, month: string) {
-    const [entries, projects, products, premiums, qualityRows] = await Promise.all([
+    const [entries, projects, products, premiums, qualityRows, categoryRows] = await Promise.all([
       this.prisma.salesEntry.findMany({
         where: { agentId, callDate: { startsWith: month } },
         orderBy: [{ callDate: "desc" }, { createdAt: "desc" }],
@@ -242,6 +242,9 @@ export class KpiService {
       this.prisma.kpiDailyValue.findMany({
         where: { agentId, date: { startsWith: month }, source: "import" },
         orderBy: { date: "asc" },
+      }),
+      this.prisma.kpiCategoryDaily.findMany({
+        where: { agentId, date: { startsWith: month }, source: "import" },
       }),
     ]);
 
@@ -281,6 +284,8 @@ export class KpiService {
       { minuteIb: 0, minuteOb: 0, waitMinutes: 0, salesEuro: 0, npsEuro: 0 },
     );
 
+    const crByCategory = buildCrByCategory(categoryRows, entries, products);
+
     return {
       month,
       sales: {
@@ -299,6 +304,7 @@ export class KpiService {
             premiumEuro: prem * e.quantity,
           };
         }),
+        crByCategory,
       },
       quality: {
         importDayCount: qualityRows.length,
@@ -329,6 +335,69 @@ export class KpiService {
     });
     return agents.map((a) => a.id);
   }
+}
+
+type KpiCategoryRowPick = { category: string; calls: number; conversions: number | null };
+type SalesEntryPick = { productId: string };
+type ProductPick = { id: string; category: string };
+
+function categoryNormKey(category: string) {
+  return category.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** CR = conversions / calls; conversions from CSV if any row sets conversions, else Sales Erfassung entry count by product category. */
+function buildCrByCategory(categoryRows: KpiCategoryRowPick[], entries: SalesEntryPick[], products: ProductPick[]) {
+  const callsByNorm = new Map<string, { calls: number; display: string }>();
+  const convImportSumByNorm = new Map<string, number>();
+  const importConvExplicitNorm = new Set<string>();
+
+  for (const r of categoryRows) {
+    const k = categoryNormKey(r.category);
+    const cur = callsByNorm.get(k) ?? { calls: 0, display: r.category.trim() };
+    cur.calls += r.calls;
+    callsByNorm.set(k, cur);
+    if (r.conversions !== null && r.conversions !== undefined) {
+      importConvExplicitNorm.add(k);
+      convImportSumByNorm.set(k, (convImportSumByNorm.get(k) ?? 0) + r.conversions);
+    }
+  }
+
+  const salesCountByNorm = new Map<string, { count: number; display: string }>();
+  for (const e of entries) {
+    const p = products.find((x) => x.id === e.productId);
+    const raw = p?.category?.trim() ? p.category.trim() : "—";
+    const k = categoryNormKey(raw);
+    const cur = salesCountByNorm.get(k) ?? { count: 0, display: raw };
+    cur.count += 1;
+    salesCountByNorm.set(k, cur);
+  }
+
+  const norms = new Set([...callsByNorm.keys(), ...salesCountByNorm.keys()]);
+  const rows: Array<{
+    category: string;
+    calls: number;
+    conversions: number;
+    numeratorSource: "import" | "sales";
+    crPercent: number | null;
+  }> = [];
+
+  for (const k of norms) {
+    const calls = callsByNorm.get(k)?.calls ?? 0;
+    const display = callsByNorm.get(k)?.display ?? salesCountByNorm.get(k)?.display ?? k;
+    const useImport = importConvExplicitNorm.has(k);
+    const conversions = useImport ? (convImportSumByNorm.get(k) ?? 0) : (salesCountByNorm.get(k)?.count ?? 0);
+    const crPercent = calls > 0 ? Math.round((conversions / calls) * 10_000) / 100 : null;
+    rows.push({
+      category: display,
+      calls,
+      conversions,
+      numeratorSource: useImport ? "import" : "sales",
+      crPercent,
+    });
+  }
+
+  rows.sort((a, b) => a.category.localeCompare(b.category, "de", { sensitivity: "base" }));
+  return rows;
 }
 
 function resolveRate(rates: Array<{ shiftType: string; euroPerHour: number }>, bookingCode: string | undefined) {

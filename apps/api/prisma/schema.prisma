@@ -67,6 +67,7 @@ model User {
   auditLogs            AuditLog[]
   importJobs           ImportJob[]
   kpiDailyValues       KpiDailyValue[]
+  kpiCategoryDailyRows KpiCategoryDaily[]
 
   controllingSessionsCreated ControllingSession[]           @relation("ControllingSessionsCreated")
   controllingLiveObsAgent    ControllingLiveObservation[]   @relation("ControllingLiveObsAgent")
@@ -480,6 +481,23 @@ model KpiDailyValue {
   @@index([date])
 }
 
+/// Per-day, per-category call volume (and optional conversions) from CSV import — used for CR vs Sales Erfassung.
+model KpiCategoryDaily {
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        User     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  date         String
+  category     String
+  calls        Int      @default(0)
+  conversions Int?     // optional override from CSV; if null, CR numerator uses Sales Erfassung count for same category
+  source       String? @default("import")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([agentId, date, category])
+  @@index([agentId, date])
+}
+
 enum ControllingLiveCode {
   A
   P
@@ -562,6 +580,7 @@ enum ImportStatus {
 
 enum ImportKind {
   KPI_DAILY
+  KPI_CATEGORY_DAILY
   SALES
   GENERIC
 }

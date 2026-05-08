@@ -155,7 +155,7 @@ export const importDryRunSchema = z.object({
 export const importCommitSchema = z.object({
   source: z.string().min(1).max(160),
   body: z.string().min(1).max(2_000_000),
-  kind: z.enum(["KPI_DAILY", "SALES", "GENERIC"]).default("GENERIC"),
+  kind: z.enum(["KPI_DAILY", "KPI_CATEGORY_DAILY", "SALES", "GENERIC"]).default("GENERIC"),
   mapping: z.record(z.string()).optional(),
 });
 

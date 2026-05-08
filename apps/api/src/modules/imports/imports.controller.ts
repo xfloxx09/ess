@@ -29,7 +29,7 @@ export class ImportsController {
   }
 
   @Post("commit")
-  async commit(@Req() req: { user: RequestUser }, @Body(Body$(importCommitSchema)) body: { source: string; body: string; kind: "KPI_DAILY" | "SALES" | "GENERIC"; mapping?: Record<string, string> }) {
+  async commit(@Req() req: { user: RequestUser }, @Body(Body$(importCommitSchema)) body: { source: string; body: string; kind: "KPI_DAILY" | "KPI_CATEGORY_DAILY" | "SALES" | "GENERIC"; mapping?: Record<string, string> }) {
     const job = await this.imports.commit({ uploadedById: req.user.id, source: body.source, body: body.body, kind: body.kind, mapping: body.mapping ?? null });
     await this.audit.log(req.user.id, "IMPORT", "imports.commit", job.id, { fileName: job.fileName, status: job.status });
     return job;
