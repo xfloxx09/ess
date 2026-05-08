@@ -26,10 +26,13 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
+  app.getHttpAdapter().get("/", (_req: unknown, res: { json: (body: unknown) => unknown }) =>
+    res.json({ service: "ess-api", health: "/health" }),
+  );
+
   app.getHttpAdapter().get("/health", (_req: unknown, res: { json: (body: unknown) => unknown }) =>
     res.json({ ok: true, env: env.NODE_ENV }),
   );
-
   await app.listen(env.PORT, "0.0.0.0");
   new Logger("Bootstrap").log(`API listening on http://0.0.0.0:${env.PORT} (env=${env.NODE_ENV})`);
 }
