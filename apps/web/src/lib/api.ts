@@ -64,6 +64,11 @@ export async function api<T>(path: string, optsOrInit?: ApiOptions | RequestInit
     body = b ?? undefined;
     token = legacyToken;
     rest = r;
+    // fetch() does not set Content-Type for string bodies; Nest/Express need
+    // application/json or req.body stays {} and every Zod @Body() fails with "Validation failed".
+    if (typeof body === "string" && body.length > 0) {
+      headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+    }
   } else {
     const o = (optsOrInit ?? {}) as ApiOptions;
     headers = (o.headers as Record<string, string>) ?? {};
