@@ -64,7 +64,8 @@ RUN test -f /app/apps/api/dist/main.js || (echo "FATAL: /app/apps/api/dist/main.
 WORKDIR /app/apps/api
 
 ENV NODE_ENV=production
-ENV PORT=4000
+# Do not set PORT here — Railway injects PORT at runtime and routes traffic to it.
+# A baked-in PORT=4000 caused the proxy to connect to the wrong port → 502 connection refused.
 EXPOSE 4000
 
 USER nestjs
