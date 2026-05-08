@@ -2,7 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,10 +58,12 @@ function minutesToHoursLabel(m: number) {
   return `${(m / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })} h`;
 }
 
-export default function AgentKpiPage() {
+function AgentKpiPageInner() {
   const auth = useRequireAuth(["AGENT"]);
   const { user } = useAuth();
   const t = useT();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") === "quality" ? "quality" : "sales";
   const [month, setMonth] = useState(currentMonthKey());
 
   const data = useQuery({
@@ -114,6 +117,7 @@ export default function AgentKpiPage() {
 
       {payload && (
         <div className="space-y-8">
+          {tab === "sales" && (
           <section className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">{t("agentWorkspace.kpiSalesSection")}</h2>
@@ -246,8 +250,10 @@ export default function AgentKpiPage() {
               </CardContent>
             </Card>
           </section>
+          )}
 
-          <section className="space-y-4 border-t pt-8">
+          {tab === "quality" && (
+          <section className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">{t("agentWorkspace.kpiQualitySection")}</h2>
               <p className="text-sm text-muted-foreground">{t("agentWorkspace.kpiQualitySectionHint")}</p>
@@ -329,8 +335,18 @@ export default function AgentKpiPage() {
               </CardContent>
             </Card>
           </section>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+export default function AgentKpiPage() {
+  const t = useT();
+  return (
+    <Suspense fallback={<p className="p-6 text-muted-foreground">{t("app.loading")}</p>}>
+      <AgentKpiPageInner />
+    </Suspense>
   );
 }

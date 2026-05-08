@@ -117,7 +117,7 @@ export default function AgentDashboardPage() {
     icon: typeof ShoppingCart;
   }> = [
     { href: "/agent/sales", labelKey: "nav.agentSales", descKey: "agentWorkspace.dashCardSales", icon: ShoppingCart },
-    { href: "/agent/kpi", labelKey: "nav.agentKpi", descKey: "agentWorkspace.dashCardKpi", icon: TrendingUp },
+    { href: "/agent/kpi?tab=sales", labelKey: "nav.agentKpi", descKey: "agentWorkspace.dashCardKpi", icon: TrendingUp },
     { href: "/agent/calendar", labelKey: "nav.agentCalendar", descKey: "agentWorkspace.dashCardCalendar", icon: Calendar },
     { href: "/agent/view", labelKey: "nav.agentView", descKey: "agentWorkspace.dashCardMonth", icon: BarChart3 },
     { href: "/agent/shiftplan", labelKey: "nav.agentShiftplan", descKey: "agentWorkspace.dashCardShiftplan", icon: ClipboardList },

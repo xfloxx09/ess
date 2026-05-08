@@ -49,6 +49,8 @@
     "agentDashboard": "Übersicht",
     "agentSales": "Sales",
     "agentKpi": "KPI",
+    "agentKpiSales": "Sales",
+    "agentKpiQuality": "Qualität",
     "agentCalendar": "Terminkalender",
     "agentView": "Mein Monat",
     "agentShiftplan": "Mein Schichtplan",

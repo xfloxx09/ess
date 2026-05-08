@@ -7,6 +7,7 @@ import {
   Calendar,
   CalendarRange,
   ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Database,
   FileText,
@@ -25,7 +26,8 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { AppViewKey, UserRole } from "@ess/shared";
 import { useAuth } from "@/lib/auth";
 import { useUiStore } from "@/lib/stores";
@@ -39,6 +41,7 @@ interface NavLink {
   icon: typeof Calendar;
   roles?: UserRole[];
   viewKey?: AppViewKey;
+  children?: Array<{ href: string; labelKey: string }>;
 }
 
 interface NavSection {
@@ -59,7 +62,16 @@ const sections: NavSection[] = [
     items: [
       { href: "/agent", labelKey: "nav.agentDashboard", icon: LayoutDashboard, viewKey: "agent_dashboard" },
       { href: "/agent/sales", labelKey: "nav.agentSales", icon: ShoppingCart, viewKey: "agent_sales" },
-      { href: "/agent/kpi", labelKey: "nav.agentKpi", icon: TrendingUp, viewKey: "agent_kpi" },
+      {
+        href: "/agent/kpi",
+        labelKey: "nav.agentKpi",
+        icon: TrendingUp,
+        viewKey: "agent_kpi",
+        children: [
+          { href: "/agent/kpi?tab=sales", labelKey: "nav.agentKpiSales" },
+          { href: "/agent/kpi?tab=quality", labelKey: "nav.agentKpiQuality" },
+        ],
+      },
       { href: "/agent/calendar", labelKey: "nav.agentCalendar", icon: Calendar, viewKey: "agent_calendar" },
       { href: "/agent/view", labelKey: "nav.agentView", icon: BarChart3, viewKey: "agent_view" },
       { href: "/agent/shiftplan", labelKey: "nav.agentShiftplan", icon: ClipboardList, viewKey: "agent_shiftplan" },
@@ -96,7 +108,17 @@ export function Sidebar() {
   const { user, canAccessView, authorized } = useAuth();
   const { sidebarCollapsed, toggleSidebar } = useUiStore();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useT();
+  const [kpiGroupOpen, setKpiGroupOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname === "/agent/kpi") {
+      setKpiGroupOpen(true);
+    } else {
+      setKpiGroupOpen(false);
+    }
+  }, [pathname]);
 
   if (!user) return null;
 
@@ -136,6 +158,74 @@ export function Sidebar() {
               )}
               <ul className="space-y-1">
                 {visibleItems.map((item) => {
+                  if (item.children?.length) {
+                    const Icon = item.icon;
+                    const onKpi = pathname === "/agent/kpi";
+                    const tab = searchParams.get("tab") === "quality" ? "quality" : "sales";
+                    if (sidebarCollapsed) {
+                      return (
+                        <li key={item.href}>
+                          <Link
+                            href="/agent/kpi?tab=sales"
+                            className={cn(
+                              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                              onKpi
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                              "justify-center px-0",
+                            )}
+                            title={t(item.labelKey)}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                          </Link>
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={item.href} className="space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setKpiGroupOpen((o) => !o)}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
+                            onKpi ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                          )}
+                          aria-expanded={kpiGroupOpen}
+                        >
+                          <ChevronRight
+                            className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", kpiGroupOpen && "rotate-90")}
+                            aria-hidden
+                          />
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{t(item.labelKey)}</span>
+                        </button>
+                        {kpiGroupOpen && (
+                          <ul className="ml-2 space-y-0.5 border-l border-border/80 pl-2">
+                            {item.children.map((sub) => {
+                              const isQuality = sub.href.includes("tab=quality");
+                              const subActive = onKpi && (isQuality ? tab === "quality" : tab === "sales");
+                              return (
+                                <li key={sub.href}>
+                                  <Link
+                                    href={sub.href}
+                                    className={cn(
+                                      "flex items-center rounded-md py-1.5 pl-2 pr-2 text-sm transition-colors",
+                                      subActive
+                                        ? "bg-primary font-medium text-primary-foreground"
+                                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                                    )}
+                                  >
+                                    <span className="truncate">{t(sub.labelKey)}</span>
+                                  </Link>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  }
+
                   const active =
                     item.href === "/agent"
                       ? pathname === "/agent" || pathname === "/agent/"
