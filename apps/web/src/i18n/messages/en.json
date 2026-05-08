@@ -44,6 +44,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "leadershipDashboard": "Leadership dashboard",
     "agentSales": "Sales",
     "agentCalendar": "Calendar",
     "agentView": "My month",
@@ -54,6 +55,9 @@
     "controllingRosterMonth": "Roster – Month",
     "controllingImports": "Imports",
     "controllingReports": "Reports",
+    "controllingLevel1": "Controlling – Level 1",
+    "controllingLevel2": "Controlling – Level 2",
+    "controllingEndkontrolle": "Final review",
     "adminUsers": "Users",
     "adminCatalog": "Catalog",
     "adminCalendarRules": "Calendar rules",
@@ -159,5 +163,57 @@
       "IMPORT_FAILED": "Import failed",
       "SYSTEM": "System"
     }
+  },
+  "controlling": {
+    "level1": {
+      "title": "Controlling – Level 1 (live)",
+      "subtitle": "Pick department, project and teams, then set A/P/N only for the current time block.",
+      "setupTitle": "Session",
+      "liveTitle": "Live board",
+      "date": "Date",
+      "abteilung": "Department",
+      "project": "Project",
+      "teams": "Teams",
+      "pickProject": "Choose a project…",
+      "startSession": "Create session",
+      "sessionCreated": "Session created.",
+      "sessionId": "Session id",
+      "openBoardHint": "Create a session to load the board.",
+      "blockInfo": "Current block index: {block} (max. {lastIndex}), block length {minutes} min (Europe/Berlin)",
+      "editable": "The current block is editable.",
+      "readOnly": "View only: edits are limited to the live block on today’s date.",
+      "currentCode": "Code in current block",
+      "needTeams": "Select at least one team.",
+      "obsSaved": "Live code saved."
+    },
+    "level2": {
+      "title": "Controlling – Level 2 (release)",
+      "subtitle": "Approve or reject each employee.",
+      "project": "Project",
+      "tableTitle": "Employees",
+      "pickProjectHint": "Please select a project.",
+      "liveCount": "Live entries",
+      "l2Status": "Level 2",
+      "pending": "Pending",
+      "released": "Released",
+      "rejected": "Rejected",
+      "approve": "Release",
+      "reject": "Reject"
+    },
+    "end": {
+      "title": "Final review",
+      "subtitle": "All live data and level-2 status; hour adjustments (delta).",
+      "tableTitle": "Day overview",
+      "live": "Live A/P/N",
+      "l2": "Level 2",
+      "hoursDelta": "Hours Δ",
+      "saveFinal": "Save final review"
+    }
+  },
+  "leadership": {
+    "title": "Leadership dashboard",
+    "subtitle": "KPIs for projects and teams in your access scope.",
+    "scopeNote": "Scope",
+    "scopeBody": "Figures follow your access roles (project scopes). Unrestricted org-wide data is for administrators without scoped roles."
   }
 }

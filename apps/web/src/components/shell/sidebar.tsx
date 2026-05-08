@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Activity,
   BarChart3,
+  Briefcase,
   Calendar,
   CalendarRange,
   ChevronLeft,
@@ -13,10 +15,12 @@ import {
   LayoutDashboard,
   ListChecks,
   Network,
+  Scale,
   ScrollText,
   ShoppingCart,
   Sliders,
   Upload,
+  UserCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -46,6 +50,7 @@ const sections: NavSection[] = [
     titleKey: "Dashboard",
     items: [
       { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, viewKey: "dashboard_kpi" },
+      { href: "/leadership", labelKey: "nav.leadershipDashboard", icon: Briefcase, viewKey: "leadership_dashboard" },
     ],
   },
   {
@@ -62,6 +67,9 @@ const sections: NavSection[] = [
     items: [
       { href: "/controlling/review", labelKey: "nav.controllingReview", icon: ListChecks, viewKey: "controlling_review" },
       { href: "/controlling/antraege", labelKey: "nav.controllingAntraege", icon: HelpCircle, viewKey: "controlling_antraege" },
+      { href: "/controlling/level1", labelKey: "nav.controllingLevel1", icon: Activity, viewKey: "controlling_level1" },
+      { href: "/controlling/level2", labelKey: "nav.controllingLevel2", icon: UserCheck, viewKey: "controlling_level2" },
+      { href: "/controlling/endkontrolle", labelKey: "nav.controllingEndkontrolle", icon: Scale, viewKey: "controlling_endkontrolle" },
       { href: "/controlling/roster-day", labelKey: "nav.controllingRosterDay", icon: CalendarRange, viewKey: "controlling_roster_day" },
       { href: "/controlling/roster-month", labelKey: "nav.controllingRosterMonth", icon: CalendarRange, viewKey: "controlling_roster_month" },
       { href: "/imports", labelKey: "nav.controllingImports", icon: Upload, viewKey: "controlling_imports" },

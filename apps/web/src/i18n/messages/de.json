@@ -44,6 +44,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "leadershipDashboard": "Führungskräfte Dashboard",
     "agentSales": "Sales",
     "agentCalendar": "Terminkalender",
     "agentView": "Mein Monat",
@@ -54,6 +55,9 @@
     "controllingRosterMonth": "Schichtplan – Monat",
     "controllingImports": "Importe",
     "controllingReports": "Reports",
+    "controllingLevel1": "Controlling Stufe 1",
+    "controllingLevel2": "Controlling Stufe 2",
+    "controllingEndkontrolle": "Endkontrolle",
     "adminUsers": "Benutzer",
     "adminCatalog": "Katalog",
     "adminCalendarRules": "Kalenderregeln",
@@ -159,5 +163,57 @@
       "IMPORT_FAILED": "Import fehlgeschlagen",
       "SYSTEM": "System"
     }
+  },
+  "controlling": {
+    "level1": {
+      "title": "Controlling – Stufe 1 (Live)",
+      "subtitle": "Abteilung, Projekt und Teams wählen, dann A/P/N nur für den aktuellen Zeitblock.",
+      "setupTitle": "Sitzung",
+      "liveTitle": "Live-Board",
+      "date": "Datum",
+      "abteilung": "Abteilung",
+      "project": "Projekt",
+      "teams": "Teams",
+      "pickProject": "Projekt wählen…",
+      "startSession": "Sitzung anlegen",
+      "sessionCreated": "Sitzung angelegt.",
+      "sessionId": "Sitzungs-ID",
+      "openBoardHint": "Legen Sie eine Sitzung an, um das Board zu laden.",
+      "blockInfo": "Aktueller Block-Index: {block} (max. {lastIndex}), Blocklänge {minutes} Min. (Europe/Berlin)",
+      "editable": "Der aktuelle Block ist bearbeitbar.",
+      "readOnly": "Nur Anzeige: Bearbeitung nur im laufenden Block des heutigen Tages.",
+      "currentCode": "Code im aktuellen Block",
+      "needTeams": "Bitte mindestens ein Team auswählen.",
+      "obsSaved": "Live-Code gespeichert."
+    },
+    "level2": {
+      "title": "Controlling – Stufe 2 (Freigabe)",
+      "subtitle": "Pro Mitarbeiter freigeben oder ablehnen.",
+      "project": "Projekt",
+      "tableTitle": "Mitarbeiter",
+      "pickProjectHint": "Bitte ein Projekt wählen.",
+      "liveCount": "Live-Einträge",
+      "l2Status": "Stufe-2",
+      "pending": "Offen",
+      "released": "Freigegeben",
+      "rejected": "Abgelehnt",
+      "approve": "Freigeben",
+      "reject": "Ablehnen"
+    },
+    "end": {
+      "title": "Endkontrolle",
+      "subtitle": "Alle Live-Daten und Stufe-2-Status; Stundenkorrektur (Delta).",
+      "tableTitle": "Tagesübersicht",
+      "live": "Live A/P/N",
+      "l2": "Stufe 2",
+      "hoursDelta": "Stunden Δ",
+      "saveFinal": "Endkontrolle speichern"
+    }
+  },
+  "leadership": {
+    "title": "Führungskräfte Dashboard",
+    "subtitle": "KPIs für die Ihnen zugewiesenen Projekte und Teams.",
+    "scopeNote": "Scope",
+    "scopeBody": "Daten entsprechen Ihren Zugriffsrollen (Projekt-Scopes). Vollzugriff ohne Rollen-Scope nur für Administratoren."
   }
 }

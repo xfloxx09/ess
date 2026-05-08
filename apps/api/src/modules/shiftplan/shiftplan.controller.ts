@@ -15,6 +15,13 @@ const SHIFTPLAN_CTRL: { anyRoles: UserRole[]; anyViews: AppViewKey[] } = {
   anyViews: ["controlling_roster_day", "controlling_roster_month"],
 };
 
+const CONTROLLING_WORKFLOW_VIEWS: AppViewKey[] = ["controlling_level1", "controlling_level2", "controlling_endkontrolle"];
+
+const PROJECT_TEAM_ACCESS = {
+  anyRoles: SHIFTPLAN_CTRL.anyRoles,
+  anyViews: [...SHIFTPLAN_CTRL.anyViews, ...CONTROLLING_WORKFLOW_VIEWS],
+};
+
 @Controller("shiftplan")
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ShiftplanController {
@@ -60,13 +67,13 @@ export class ShiftplanController {
   }
 
   @Get("projects")
-  @Access(SHIFTPLAN_CTRL)
+  @Access(PROJECT_TEAM_ACCESS)
   projects(@Req() req: { user: RequestUser }) {
     return this.shiftplan.listProjects(req.user);
   }
 
   @Get("teams")
-  @Access(SHIFTPLAN_CTRL)
+  @Access(PROJECT_TEAM_ACCESS)
   teams(@Req() req: { user: RequestUser }, @Query("projectId") projectId: string) {
     return this.shiftplan.listTeamsByProject(projectId, req.user);
   }

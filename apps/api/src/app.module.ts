@@ -16,6 +16,7 @@ import { ReportsModule } from "./modules/reports/reports.module";
 import { SalesModule } from "./modules/sales/sales.module";
 import { ShiftplanModule } from "./modules/shiftplan/shiftplan.module";
 import { AdminOrgAccessModule } from "./modules/admin-org-access/admin-org-access.module";
+import { ControllingWorkflowModule } from "./modules/controlling-workflow/controlling-workflow.module";
 import { UsersModule } from "./modules/users/users.module";
 
 @Module({
@@ -34,6 +35,7 @@ import { UsersModule } from "./modules/users/users.module";
     CalendarModule,
     KpiModule,
     ShiftplanModule,
+    ControllingWorkflowModule,
     ConfigModule,
     ImportsModule,
     ReportsModule,

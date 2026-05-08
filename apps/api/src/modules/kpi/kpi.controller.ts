@@ -17,6 +17,10 @@ const DASHBOARD_ACCESS: { anyRoles: UserRole[]; anyViews: AppViewKey[] } = {
   anyViews: ["dashboard_kpi", "controlling_review"],
 };
 
+const LEADERSHIP_ACCESS: { anyViews: AppViewKey[] } = {
+  anyViews: ["leadership_dashboard"],
+};
+
 @Controller("kpi")
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class KpiController {
@@ -39,5 +43,11 @@ export class KpiController {
   @Access(DASHBOARD_ACCESS)
   dashboard(@Query("month") month: string) {
     return this.kpi.dashboardSummary(month);
+  }
+
+  @Get("leadership")
+  @Access(LEADERSHIP_ACCESS)
+  leadership(@Req() req: { user: RequestUser }, @Query("month") month: string) {
+    return this.kpi.leadershipSummary(month, req.user);
   }
 }

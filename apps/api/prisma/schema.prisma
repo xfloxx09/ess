@@ -68,6 +68,13 @@ model User {
   importJobs           ImportJob[]
   kpiDailyValues       KpiDailyValue[]
 
+  controllingSessionsCreated ControllingSession[]           @relation("ControllingSessionsCreated")
+  controllingLiveObsAgent    ControllingLiveObservation[]   @relation("ControllingLiveObsAgent")
+  controllingLiveObsAuthor   ControllingLiveObservation[]   @relation("ControllingLiveObsAuthor")
+  controllingAgentDays       ControllingAgentDay[]          @relation("ControllingAgentDayAgent")
+  controllingAgentDayL2      ControllingAgentDay[]         @relation("ControllingAgentDayL2")
+  controllingAgentDayFinal   ControllingAgentDay[]         @relation("ControllingAgentDayFinal")
+
   @@index([role])
   @@index([teamId])
   @@index([deletedAt])
@@ -468,6 +475,75 @@ model KpiDailyValue {
   source       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@unique([agentId, date])
+  @@index([date])
+}
+
+enum ControllingLiveCode {
+  A
+  P
+  N
+}
+
+model ControllingPolicy {
+  id               String   @id @default("singleton")
+  liveBlockMinutes Int      @default(30)
+  updatedAt        DateTime @updatedAt
+}
+
+model ControllingSession {
+  id              String   @id @default(cuid())
+  createdByUserId String
+  creator         User     @relation("ControllingSessionsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  date            String
+  abteilungId     String?
+  projectId       String?
+  teamIds         Json
+  createdAt       DateTime @default(now())
+
+  observations ControllingLiveObservation[]
+
+  @@index([createdByUserId, date])
+}
+
+model ControllingLiveObservation {
+  id                   String              @id @default(cuid())
+  sessionId            String?
+  session              ControllingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  agentId              String
+  agent                User                @relation("ControllingLiveObsAgent", fields: [agentId], references: [id], onDelete: Cascade)
+  date                 String
+  blockIndex           Int
+  blockMinutesSnapshot Int                 @default(30)
+  code                 ControllingLiveCode
+  createdByUserId      String
+  creator              User                @relation("ControllingLiveObsAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@unique([agentId, date, blockIndex])
+  @@index([date])
+  @@index([sessionId])
+}
+
+model ControllingAgentDay {
+  id              String    @id @default(cuid())
+  agentId         String
+  agent           User      @relation("ControllingAgentDayAgent", fields: [agentId], references: [id], onDelete: Cascade)
+  date            String
+  l2ReviewerId    String?
+  l2Reviewer      User?     @relation("ControllingAgentDayL2", fields: [l2ReviewerId], references: [id], onDelete: SetNull)
+  l2Released      Boolean?
+  l2Note          String?
+  l2DecidedAt     DateTime?
+  finalReviewerId String?
+  finalReviewer   User?     @relation("ControllingAgentDayFinal", fields: [finalReviewerId], references: [id], onDelete: SetNull)
+  finalHoursDelta Float     @default(0)
+  finalNote       String?
+  finalDecidedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([agentId, date])
   @@index([date])

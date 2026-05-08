@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma.service";
+import type { RequestUser } from "../../common/authz.types";
 
 @Injectable()
 export class KpiService {
@@ -115,8 +116,18 @@ export class KpiService {
     };
   }
 
-  async listOrgMonth(month: string, search?: string) {
+  async listOrgMonth(month: string, search?: string, onlyAgentIds?: string[] | null) {
+    if (onlyAgentIds && onlyAgentIds.length === 0) {
+      return {
+        month,
+        leaderboard: [],
+        totals: { payoutEuro: 0, agreedSlots: 0, disagreedSlots: 0 },
+      };
+    }
     const where: Parameters<typeof this.prisma.user.findMany>[0] = { where: { role: "AGENT", active: true, deletedAt: null } };
+    if (onlyAgentIds) {
+      where.where = { ...where.where, id: { in: onlyAgentIds } };
+    }
     if (search) {
       where.where = {
         ...where.where,
@@ -156,7 +167,7 @@ export class KpiService {
   }
 
   async dashboardSummary(month: string) {
-    const org = await this.listOrgMonth(month);
+    const org = await this.listOrgMonth(month, undefined, undefined);
     const projects = await this.prisma.project.findMany({ where: { active: true } });
     const sales = await this.prisma.salesEntry.findMany({ where: { callDate: { startsWith: month } } });
     const premiums = await this.prisma.productPremium.findMany();
@@ -180,6 +191,54 @@ export class KpiService {
       topAgents: org.leaderboard.slice(0, 10),
       salesByProject,
     };
+  }
+
+  /** KPI leaderboard and aggregates limited to agents in the caller's allowed projects (full org for ADMIN). */
+  async leadershipSummary(month: string, user: RequestUser) {
+    const scopedIds = await this.getAgentIdsVisibleTo(user);
+    const org = await this.listOrgMonth(month, undefined, scopedIds);
+    const projectWhere = { active: true as const };
+    const projects =
+      user.role === "ADMIN" || !user.allowedProjectIds
+        ? await this.prisma.project.findMany({ where: projectWhere })
+        : await this.prisma.project.findMany({ where: { ...projectWhere, id: { in: user.allowedProjectIds } } });
+    const sales = await this.prisma.salesEntry.findMany({ where: { callDate: { startsWith: month } } });
+    const premiums = await this.prisma.productPremium.findMany();
+    const visibleProjectIds = new Set(projects.map((p) => p.id));
+    const salesByProject = projects.map((p) => {
+      const projectSales = sales.filter((s) => s.projectId === p.id && visibleProjectIds.has(s.projectId));
+      const euro = projectSales.reduce((sum, s) => {
+        const premium = premiums.find((pm) => pm.projectId === s.projectId && pm.productId === s.productId);
+        return sum + (premium?.amountEuro ?? 0) * s.quantity;
+      }, 0);
+      return { projectId: p.id, projectName: p.name, salesEuro: euro, count: projectSales.length };
+    });
+    return {
+      month,
+      payoutEuro: org.totals.payoutEuro,
+      agreedSlots: org.totals.agreedSlots,
+      disagreedSlots: org.totals.disagreedSlots,
+      agreementPct:
+        org.totals.agreedSlots + org.totals.disagreedSlots === 0
+          ? 100
+          : (org.totals.agreedSlots / (org.totals.agreedSlots + org.totals.disagreedSlots)) * 100,
+      topAgents: org.leaderboard.slice(0, 25),
+      salesByProject,
+    };
+  }
+
+  private async getAgentIdsVisibleTo(user?: Pick<RequestUser, "role" | "allowedProjectIds">): Promise<string[] | null> {
+    if (!user || user.role === "ADMIN" || !user.allowedProjectIds) return null;
+    const teams = await this.prisma.team.findMany({
+      where: { projectId: { in: user.allowedProjectIds } },
+      select: { id: true },
+    });
+    if (teams.length === 0) return [];
+    const agents = await this.prisma.user.findMany({
+      where: { role: "AGENT", teamId: { in: teams.map((t) => t.id) }, active: true, deletedAt: null },
+      select: { id: true },
+    });
+    return agents.map((a) => a.id);
   }
 }
 

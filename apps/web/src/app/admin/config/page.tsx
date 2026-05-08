@@ -12,11 +12,15 @@ type Dashboard = {
   quarterHourCodes: Array<{ id: string; code: string; label: string; color: string }>;
 };
 
+type ControllingPolicy = { id: string; liveBlockMinutes: number; updatedAt: string };
+
 export default function ConfigPage() {
   const { token, loading } = useRequireAuth(["ADMIN"]);
   const [code, setCode] = useState({ code: "A", label: "Anwesend", color: "#3498db", valueMultiplier: 1 });
   const [rate, setRate] = useState({ shiftType: "FRUEH", euroPerHour: 12.5 });
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [controllingPolicy, setControllingPolicy] = useState<ControllingPolicy | null>(null);
+  const [liveBlockMinutes, setLiveBlockMinutes] = useState(30);
   const [status, setStatus] = useState("Update rate tables and quarter-hour semantics.");
 
   async function load() {
@@ -27,6 +31,28 @@ export default function ConfigPage() {
       const response = await api<Dashboard>("/config/dashboard", undefined, token);
       setDashboard(response);
       setStatus("Configuration loaded");
+    } catch (error) {
+      setStatus(toMessage(error));
+    }
+  }
+
+  async function loadControllingPolicy() {
+    if (!token) return;
+    try {
+      const p = await api<ControllingPolicy>("/controlling/policy", undefined, token);
+      setControllingPolicy(p);
+      setLiveBlockMinutes(p.liveBlockMinutes);
+    } catch (error) {
+      setStatus(toMessage(error));
+    }
+  }
+
+  async function saveControllingPolicy() {
+    if (!token) return;
+    try {
+      const p = await api<ControllingPolicy>("/controlling/policy", { method: "PATCH", body: { liveBlockMinutes }, token });
+      setControllingPolicy(p);
+      setStatus("Controlling live block updated");
     } catch (error) {
       setStatus(toMessage(error));
     }
@@ -67,6 +93,35 @@ export default function ConfigPage() {
       <div className="page-head">
         <h2>Configuration Studio</h2>
         <p>Centralized rule governance for code semantics, valuation logic and compensation rates.</p>
+      </div>
+
+      <div className="panel grid cols-2">
+        <h3 className="col-span-2">Controlling – Live-Block (Minuten)</h3>
+        <p className="col-span-2 text-sm text-muted-foreground">
+          Intervall für Live-A/P/N (Stufe 1). Nur der aktuelle Block nach Europe/Berlin ist editierbar.
+        </p>
+        <label>
+          Minuten
+          <input
+            type="number"
+            min={5}
+            max={180}
+            step={5}
+            value={liveBlockMinutes}
+            onChange={(event) => setLiveBlockMinutes(Number(event.target.value))}
+          />
+        </label>
+        <div className="flex gap-2 items-end">
+          <button type="button" className="btn-secondary" onClick={() => void loadControllingPolicy()}>
+            Load policy
+          </button>
+          <button type="button" onClick={() => void saveControllingPolicy()}>
+            Save policy
+          </button>
+        </div>
+        {controllingPolicy && (
+          <p className="col-span-2 text-xs text-muted-foreground">Last updated: {controllingPolicy.updatedAt}</p>
+        )}
       </div>
 
       <div className="panel grid cols-2">

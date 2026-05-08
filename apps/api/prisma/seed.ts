@@ -33,6 +33,12 @@ async function main() {
     update: {},
   });
 
+  await prisma.controllingPolicy.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", liveBlockMinutes: 30 },
+    update: {},
+  });
+
   // ---------- Org hierarchy ----------
   const dl = await prisma.dienstleister.upsert({
     where: { id: "dl-demo" },
@@ -129,6 +135,41 @@ async function main() {
   await prisma.userAccessRole.upsert({
     where: { userId_accessRoleId: { userId: agent2.id, accessRoleId: roleSchichtplan.id } },
     create: { userId: agent2.id, accessRoleId: roleSchichtplan.id },
+    update: {},
+  });
+
+  const roleFkLeadership = await prisma.accessRole.upsert({
+    where: { slug: "fuehrungskraefte-dashboard" },
+    create: {
+      slug: "fuehrungskraefte-dashboard",
+      name: "Führungskräfte Dashboard",
+      description: "KPI-Übersicht für zugewiesene Projekte (Demo: GK CM KMU)",
+      scopes: { create: { resourceType: "PROJECT", resourceId: projectGk.id } },
+    },
+    update: {
+      name: "Führungskräfte Dashboard",
+      description: "KPI-Übersicht für zugewiesene Projekte (Demo: GK CM KMU)",
+    },
+  });
+  await prisma.accessRoleView.upsert({
+    where: { accessRoleId_viewKey: { accessRoleId: roleFkLeadership.id, viewKey: "leadership_dashboard" } },
+    create: { accessRoleId: roleFkLeadership.id, viewKey: "leadership_dashboard" },
+    update: {},
+  });
+  await prisma.accessRoleScope.upsert({
+    where: {
+      accessRoleId_resourceType_resourceId: {
+        accessRoleId: roleFkLeadership.id,
+        resourceType: "PROJECT",
+        resourceId: projectGk.id,
+      },
+    },
+    create: { accessRoleId: roleFkLeadership.id, resourceType: "PROJECT", resourceId: projectGk.id },
+    update: {},
+  });
+  await prisma.userAccessRole.upsert({
+    where: { userId_accessRoleId: { userId: controller.id, accessRoleId: roleFkLeadership.id } },
+    create: { userId: controller.id, accessRoleId: roleFkLeadership.id },
     update: {},
   });
 

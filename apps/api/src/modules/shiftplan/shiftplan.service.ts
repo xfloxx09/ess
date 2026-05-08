@@ -39,7 +39,7 @@ export class ShiftplanService {
     if (user && user.role !== "ADMIN" && user.allowedProjectIds) {
       where.id = { in: user.allowedProjectIds };
     }
-    return this.prisma.project.findMany({ where, select: { id: true, name: true }, orderBy: { name: "asc" } });
+    return this.prisma.project.findMany({ where, select: { id: true, name: true, abteilungId: true }, orderBy: { name: "asc" } });
   }
 
   async listTeamsByProject(projectId: string, user?: RequestUser) {

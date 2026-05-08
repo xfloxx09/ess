@@ -177,3 +177,32 @@ export const notificationPrefsSchema = z.object({
     )
     .max(20),
 });
+
+export const controllingPolicyUpdateSchema = z.object({
+  liveBlockMinutes: z.number().int().min(5).max(180),
+});
+
+export const controllingSessionCreateSchema = z.object({
+  date: dateString,
+  abteilungId: z.string().min(1).optional().nullable(),
+  projectId: z.string().min(1),
+  teamIds: z.array(z.string().min(1)).min(1).max(80),
+});
+
+export const controllingLiveObservationSchema = z.object({
+  sessionId: z.string().min(1),
+  agentId: z.string().min(1),
+  date: dateString,
+  blockIndex: z.number().int().min(0).max(500),
+  code: z.enum(["A", "P", "N"]),
+});
+
+export const controllingL2DecisionSchema = z.object({
+  released: z.boolean(),
+  note: z.string().max(2000).optional(),
+});
+
+export const controllingFinalDecisionSchema = z.object({
+  hoursDelta: z.number().min(-24).max(24),
+  note: z.string().max(2000).optional(),
+});
