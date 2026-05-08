@@ -41,8 +41,9 @@ RUN apk add --no-cache tini \
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Do not set PORT here — Railway injects PORT at runtime. Baked PORT=3000
+# caused the proxy to hit the wrong port → 502 connection refused.
 
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
