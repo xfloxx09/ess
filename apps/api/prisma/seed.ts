@@ -351,6 +351,29 @@ async function main() {
     }
   }
 
+  await prisma.agentAnnouncement.upsert({
+    where: { id: "ann-demo-welcome" },
+    create: {
+      id: "ann-demo-welcome",
+      title: "Willkommen im Agenten-Bereich",
+      body: "Hier erfassen Sie Verkäufe, buchen Schichten und Urlaub im Kalender, prüfen Ihre Monatsabrechnung und sehen das 15-Minuten-Schichtraster. Bei Fragen wenden Sie sich an Ihre Führungskraft.",
+      pinned: true,
+      publishedAt: new Date(),
+    },
+    update: {},
+  });
+  await prisma.agentAnnouncement.upsert({
+    where: { id: "ann-demo-urlaub" },
+    create: {
+      id: "ann-demo-urlaub",
+      title: "Hinweis Urlaubsbuchung",
+      body: "Kurzfrist-Urlaub ist im Kalender nur für den laufenden Monat möglich. Regulärer Urlaub bitte mit der vereinbarten Vorlaufzeit.",
+      pinned: false,
+      publishedAt: new Date(Date.now() - 2 * 86400000),
+    },
+    update: {},
+  });
+
   console.log("Seed complete.");
   console.log("Demo accounts:");
   console.log("  admin@ess.local / ChangeMe123!");

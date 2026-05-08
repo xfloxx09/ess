@@ -639,6 +639,21 @@ model NotificationPreference {
   @@id([userId, kind])
 }
 
+/// Org-wide notices shown on the agent dashboard (not per-user).
+model AgentAnnouncement {
+  id          String    @id @default(cuid())
+  title       String
+  body        String    @db.Text
+  pinned      Boolean   @default(false)
+  publishedAt DateTime  @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([publishedAt])
+  @@index([expiresAt])
+}
+
 model AuditLog {
   id          String   @id @default(cuid())
   actorUserId String?

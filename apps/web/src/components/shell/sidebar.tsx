@@ -56,6 +56,7 @@ const sections: NavSection[] = [
   {
     titleKey: "Agent",
     items: [
+      { href: "/agent", labelKey: "nav.agentDashboard", icon: LayoutDashboard, viewKey: "agent_dashboard" },
       { href: "/agent/sales", labelKey: "nav.agentSales", icon: ShoppingCart, viewKey: "agent_sales" },
       { href: "/agent/calendar", labelKey: "nav.agentCalendar", icon: Calendar, viewKey: "agent_calendar" },
       { href: "/agent/view", labelKey: "nav.agentView", icon: BarChart3, viewKey: "agent_view" },
@@ -133,7 +134,10 @@ export function Sidebar() {
               )}
               <ul className="space-y-1">
                 {visibleItems.map((item) => {
-                  const active = pathname === item.href || pathname?.startsWith(item.href + "/");
+                  const active =
+                    item.href === "/agent"
+                      ? pathname === "/agent" || pathname === "/agent/"
+                      : pathname === item.href || pathname?.startsWith(item.href + "/");
                   const Icon = item.icon;
                   return (
                     <li key={item.href}>

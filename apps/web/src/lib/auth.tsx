@@ -171,7 +171,7 @@ export function useRequireAuth(access?: RequireAuthArg) {
     if (!roles?.length && !anyViews?.length) return;
     const roleOk = roles?.length ? roles.includes(auth.user.role) : false;
     const viewOk = anyViews?.length ? anyViews.some((v) => auth.user?.visibleViews.includes(v)) : false;
-    if (!roleOk && !viewOk) router.replace("/agent/sales");
+    if (!roleOk && !viewOk) router.replace("/agent");
   }, [auth.loading, auth.user, pathname, roles, anyViews, router]);
 
   return auth;

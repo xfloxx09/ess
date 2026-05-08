@@ -18,6 +18,7 @@ import { ShiftplanModule } from "./modules/shiftplan/shiftplan.module";
 import { AdminOrgAccessModule } from "./modules/admin-org-access/admin-org-access.module";
 import { ControllingWorkflowModule } from "./modules/controlling-workflow/controlling-workflow.module";
 import { UsersModule } from "./modules/users/users.module";
+import { AgentWorkspaceModule } from "./modules/agent-workspace/agent-workspace.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from "./modules/users/users.module";
     AdminOrgAccessModule,
     AntraegeModule,
     SalesModule,
+    AgentWorkspaceModule,
     CalendarModule,
     KpiModule,
     ShiftplanModule,

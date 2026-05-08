@@ -17,7 +17,7 @@ export default function HomePage() {
     if (user.visibleViews.includes("dashboard_kpi")) {
       router.replace("/dashboard");
     } else if (user.role === "AGENT") {
-      router.replace("/agent/sales");
+      router.replace("/agent");
     } else if (user.role === "CONTROLLING") {
       router.replace("/controlling/review");
     } else {
