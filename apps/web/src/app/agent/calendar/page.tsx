@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { BookingTypeIcon } from "@/components/booking/booking-type-icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -328,7 +329,18 @@ export default function CalendarPage() {
                 onClick={() => openBookingModal(cell)}
               >
                 <div>{cell.slice(-2)}</div>
-                <div className="calendar-day-type">{dayType ? `${dayType.emoji ?? ""} ${dayType.label}` : "—"}</div>
+                <div className="calendar-day-type">
+                  {dayType ? (
+                    <span className="inline-flex max-w-full items-center justify-center gap-1.5">
+                      <span className="inline-flex shrink-0" style={{ color: dayType.color }}>
+                        <BookingTypeIcon code={dayType.code} className="h-4 w-4" />
+                      </span>
+                      <span className="truncate">{dayType.label}</span>
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </div>
               </button>
             );
           })}
@@ -339,8 +351,15 @@ export default function CalendarPage() {
         <h3>Active Booking Types</h3>
         <div className="row">
           {bookingTypes.map((type) => (
-            <span key={type.id} className="pill" style={{ background: `${type.color}22`, color: type.color }}>
-              {type.emoji ?? ""} {type.label} ({type.code})
+            <span
+              key={type.id}
+              className="pill inline-flex items-center gap-1.5"
+              style={{ background: `${type.color}22`, color: type.color }}
+            >
+              <BookingTypeIcon code={type.code} className="h-4 w-4" />
+              <span>
+                {type.label} ({type.code})
+              </span>
             </span>
           ))}
         </div>
@@ -352,7 +371,17 @@ export default function CalendarPage() {
             <DialogTitle>Buchen: {date}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Aktuell: {activeType ? `${activeType.emoji ?? ""} ${activeType.label}` : "Keine Buchung"}
+            Aktuell:{" "}
+            {activeType ? (
+              <span className="inline-flex items-center gap-1.5 align-middle">
+                <span className="inline-flex shrink-0" style={{ color: activeType.color }}>
+                  <BookingTypeIcon code={activeType.code} className="h-4 w-4" />
+                </span>
+                {activeType.label}
+              </span>
+            ) : (
+              "Keine Buchung"
+            )}
           </p>
 
             <div className="booking-category">
@@ -361,9 +390,17 @@ export default function CalendarPage() {
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "SHIFT")
                 .map((type) => (
-                    <button key={type.id} className={bookingTypeId === type.id ? "" : "btn-secondary"} onClick={() => chooseType(type.id)}>
-                    {type.emoji ?? ""} {type.label}
-                  </button>
+                    <button
+                      key={type.id}
+                      type="button"
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      onClick={() => chooseType(type.id)}
+                    >
+                      <span className="inline-flex shrink-0" style={{ color: type.color }}>
+                        <BookingTypeIcon code={type.code} className="h-4 w-4" />
+                      </span>
+                      {type.label}
+                    </button>
                 ))}
               </div>
             </div>
@@ -375,9 +412,17 @@ export default function CalendarPage() {
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "VACATION")
                 .map((type) => (
-                    <button key={type.id} className={bookingTypeId === type.id ? "" : "btn-secondary"} onClick={() => chooseType(type.id)}>
-                    {type.emoji ?? ""} {type.label}
-                  </button>
+                    <button
+                      key={type.id}
+                      type="button"
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      onClick={() => chooseType(type.id)}
+                    >
+                      <span className="inline-flex shrink-0" style={{ color: type.color }}>
+                        <BookingTypeIcon code={type.code} className="h-4 w-4" />
+                      </span>
+                      {type.label}
+                    </button>
                 ))}
               </div>
             </div>
@@ -388,9 +433,17 @@ export default function CalendarPage() {
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "SICK")
                 .map((type) => (
-                    <button key={type.id} className={bookingTypeId === type.id ? "" : "btn-secondary"} onClick={() => chooseType(type.id)}>
-                    {type.emoji ?? ""} {type.label}
-                  </button>
+                    <button
+                      key={type.id}
+                      type="button"
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      onClick={() => chooseType(type.id)}
+                    >
+                      <span className="inline-flex shrink-0" style={{ color: type.color }}>
+                        <BookingTypeIcon code={type.code} className="h-4 w-4" />
+                      </span>
+                      {type.label}
+                    </button>
                 ))}
               </div>
             </div>
@@ -453,7 +506,21 @@ export default function CalendarPage() {
               {sortedBookings.map((booking) => (
                 <TableRow key={booking.id}>
                   <TableCell>{booking.date}</TableCell>
-                  <TableCell>{bookingTypes.find((type) => type.id === booking.bookingTypeId)?.label ?? booking.bookingTypeId}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const rowType = bookingTypes.find((type) => type.id === booking.bookingTypeId);
+                      return rowType ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-flex shrink-0" style={{ color: rowType.color }}>
+                            <BookingTypeIcon code={rowType.code} className="h-4 w-4" />
+                          </span>
+                          {rowType.label}
+                        </span>
+                      ) : (
+                        booking.bookingTypeId
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>{booking.blocks.map((block) => `${block.start}-${block.end}`).join(", ")}</TableCell>
                   <TableCell>v{booking.version}</TableCell>
                   <TableCell className="text-right">
