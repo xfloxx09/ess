@@ -52,6 +52,7 @@ COPY --from=builder --chown=nestjs:nodejs /repo/package.json /repo/pnpm-workspac
 COPY --from=builder --chown=nestjs:nodejs /repo/node_modules /app/node_modules
 COPY --from=builder --chown=nestjs:nodejs /repo/packages/shared/package.json /app/packages/shared/package.json
 COPY --from=builder --chown=nestjs:nodejs /repo/packages/shared/dist /app/packages/shared/dist
+COPY --from=builder --chown=nestjs:nodejs /repo/packages/shared/node_modules /app/packages/shared/node_modules
 COPY --from=builder --chown=nestjs:nodejs /repo/apps/api/package.json /app/apps/api/package.json
 COPY --from=builder --chown=nestjs:nodejs /repo/apps/api/dist /app/apps/api/dist
 COPY --from=builder --chown=nestjs:nodejs /repo/apps/api/prisma /app/apps/api/prisma
