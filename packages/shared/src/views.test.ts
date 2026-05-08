@@ -12,6 +12,7 @@ describe("views", () => {
   it("agent only sees agent views", () => {
     const views = defaultVisibleViewsForRole("AGENT");
     expect(views).toContain("agent_dashboard");
+    expect(views).toContain("agent_kpi");
     expect(views).toContain("agent_sales");
     expect(views).not.toContain("admin_users");
   });
@@ -24,6 +25,7 @@ describe("views", () => {
 
   it("rejects unknown view keys", () => {
     expect(isAppViewKey("agent_dashboard")).toBe(true);
+    expect(isAppViewKey("agent_kpi")).toBe(true);
     expect(isAppViewKey("agent_sales")).toBe(true);
     expect(isAppViewKey("totally_made_up")).toBe(false);
   });

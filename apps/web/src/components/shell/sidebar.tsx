@@ -19,6 +19,7 @@ import {
   ScrollText,
   ShoppingCart,
   Sliders,
+  TrendingUp,
   Upload,
   UserCheck,
   Users,
@@ -58,6 +59,7 @@ const sections: NavSection[] = [
     items: [
       { href: "/agent", labelKey: "nav.agentDashboard", icon: LayoutDashboard, viewKey: "agent_dashboard" },
       { href: "/agent/sales", labelKey: "nav.agentSales", icon: ShoppingCart, viewKey: "agent_sales" },
+      { href: "/agent/kpi", labelKey: "nav.agentKpi", icon: TrendingUp, viewKey: "agent_kpi" },
       { href: "/agent/calendar", labelKey: "nav.agentCalendar", icon: Calendar, viewKey: "agent_calendar" },
       { href: "/agent/view", labelKey: "nav.agentView", icon: BarChart3, viewKey: "agent_view" },
       { href: "/agent/shiftplan", labelKey: "nav.agentShiftplan", icon: ClipboardList, viewKey: "agent_shiftplan" },

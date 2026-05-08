@@ -4,6 +4,7 @@ import type { UserRole } from "./roles";
 export const APP_VIEW_KEYS = [
   "agent_dashboard",
   "agent_sales",
+  "agent_kpi",
   "agent_calendar",
   "agent_view",
   "agent_shiftplan",
@@ -31,7 +32,14 @@ export type AppViewKey = (typeof APP_VIEW_KEYS)[number];
 
 const ALL_VIEWS = [...APP_VIEW_KEYS] as AppViewKey[];
 
-const AGENT_VIEWS: AppViewKey[] = ["agent_dashboard", "agent_sales", "agent_calendar", "agent_view", "agent_shiftplan"];
+const AGENT_VIEWS: AppViewKey[] = [
+  "agent_dashboard",
+  "agent_sales",
+  "agent_kpi",
+  "agent_calendar",
+  "agent_view",
+  "agent_shiftplan",
+];
 
 const CONTROLLING_VIEWS: AppViewKey[] = [
   "controlling_review",

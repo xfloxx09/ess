@@ -227,6 +227,95 @@ export class KpiService {
     };
   }
 
+  /**
+   * Agent KPI tab: sales aggregates from Sales Erfassung; quality from CSV-backed `KpiDailyValue` (source import).
+   */
+  async getAgentKpiTabData(agentId: string, month: string) {
+    const [entries, projects, products, premiums, qualityRows] = await Promise.all([
+      this.prisma.salesEntry.findMany({
+        where: { agentId, callDate: { startsWith: month } },
+        orderBy: [{ callDate: "desc" }, { createdAt: "desc" }],
+      }),
+      this.prisma.project.findMany({ select: { id: true, name: true } }),
+      this.prisma.product.findMany({ select: { id: true, name: true, category: true } }),
+      this.prisma.productPremium.findMany(),
+      this.prisma.kpiDailyValue.findMany({
+        where: { agentId, date: { startsWith: month }, source: "import" },
+        orderBy: { date: "asc" },
+      }),
+    ]);
+
+    const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? id;
+    const productLabel = (id: string) => {
+      const p = products.find((x) => x.id === id);
+      return p ? `${p.category} · ${p.name}` : id;
+    };
+
+    let totalPremiumEuro = 0;
+    let totalQuantity = 0;
+    const byProjectMap = new Map<string, { projectId: string; projectName: string; entryCount: number; premiumEuro: number }>();
+    for (const e of entries) {
+      const prem = premiums.find((p) => p.projectId === e.projectId && p.productId === e.productId)?.amountEuro ?? 0;
+      const euro = prem * e.quantity;
+      totalPremiumEuro += euro;
+      totalQuantity += e.quantity;
+      const cur = byProjectMap.get(e.projectId) ?? {
+        projectId: e.projectId,
+        projectName: projectName(e.projectId),
+        entryCount: 0,
+        premiumEuro: 0,
+      };
+      cur.entryCount += 1;
+      cur.premiumEuro += euro;
+      byProjectMap.set(e.projectId, cur);
+    }
+
+    const qualityTotals = qualityRows.reduce(
+      (acc, r) => ({
+        minuteIb: acc.minuteIb + r.minuteIb,
+        minuteOb: acc.minuteOb + r.minuteOb,
+        waitMinutes: acc.waitMinutes + r.waitMinutes,
+        salesEuro: acc.salesEuro + r.salesEuro,
+        npsEuro: acc.npsEuro + r.npsEuro,
+      }),
+      { minuteIb: 0, minuteOb: 0, waitMinutes: 0, salesEuro: 0, npsEuro: 0 },
+    );
+
+    return {
+      month,
+      sales: {
+        entryCount: entries.length,
+        totalPremiumEuro,
+        totalQuantity,
+        byProject: [...byProjectMap.values()].sort((a, b) => b.premiumEuro - a.premiumEuro),
+        recentEntries: entries.slice(0, 40).map((e) => {
+          const prem = premiums.find((p) => p.projectId === e.projectId && p.productId === e.productId)?.amountEuro ?? 0;
+          return {
+            id: e.id,
+            callDate: e.callDate,
+            projectName: projectName(e.projectId),
+            productLabel: productLabel(e.productId),
+            quantity: e.quantity,
+            premiumEuro: prem * e.quantity,
+          };
+        }),
+      },
+      quality: {
+        importDayCount: qualityRows.length,
+        totals: qualityTotals,
+        byDay: qualityRows.map((r) => ({
+          date: r.date,
+          minuteIb: r.minuteIb,
+          minuteOb: r.minuteOb,
+          waitMinutes: r.waitMinutes,
+          salesEuro: r.salesEuro,
+          npsEuro: r.npsEuro,
+          source: r.source,
+        })),
+      },
+    };
+  }
+
   private async getAgentIdsVisibleTo(user?: Pick<RequestUser, "role" | "allowedProjectIds">): Promise<string[] | null> {
     if (!user || user.role === "ADMIN" || !user.allowedProjectIds) return null;
     const teams = await this.prisma.team.findMany({

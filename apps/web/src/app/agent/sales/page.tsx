@@ -142,31 +142,7 @@ export default function AgentSalesPage() {
 
   return (
     <>
-      <PageHeader title={t("agentWorkspace.salesTitle")} description={t("agentWorkspace.salesSubtitle")} />
-
-      <Card className="mb-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{t("agentWorkspace.details")}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <p className="text-muted-foreground">{t("agentWorkspace.employeeId")}</p>
-            <p className="font-mono font-medium">{user?.id.slice(0, 8)}…</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">{t("agentWorkspace.name")}</p>
-            <p className="font-medium">{user?.fullName}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">{t("agentWorkspace.defaultProject")}</p>
-            <p className="font-medium">{user?.agentContext?.projectName ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">{t("agentWorkspace.team")}</p>
-            <p className="font-medium">{user?.agentContext?.teamName ?? "—"}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <PageHeader title={t("agentWorkspace.salesTitle")} description={t("agentWorkspace.salesEntryOnlySubtitle")} />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => void entries.refetch()} disabled={entries.isFetching}>
@@ -273,7 +249,7 @@ export default function AgentSalesPage() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle>{t("agentWorkspace.contractsOverview")}</CardTitle>
+          <CardTitle>{t("agentWorkspace.salesErfassungListTitle")}</CardTitle>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">{t("agentWorkspace.page")}</span>
             <Input

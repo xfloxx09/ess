@@ -33,6 +33,12 @@ export class KpiController {
     return this.kpi.listAgentMonth(target, month);
   }
 
+  @Get("agent-kpis")
+  @Roles("AGENT")
+  agentKpis(@Req() req: { user: RequestUser }, @Query("month") month: string) {
+    return this.kpi.getAgentKpiTabData(req.user.id, month);
+  }
+
   @Get("org-month")
   @Access(REVIEW_ACCESS)
   orgMonth(@Query("month") month: string, @Query("search") search?: string) {

@@ -9,6 +9,7 @@ import {
   Megaphone,
   RefreshCw,
   ShoppingCart,
+  TrendingUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +117,7 @@ export default function AgentDashboardPage() {
     icon: typeof ShoppingCart;
   }> = [
     { href: "/agent/sales", labelKey: "nav.agentSales", descKey: "agentWorkspace.dashCardSales", icon: ShoppingCart },
+    { href: "/agent/kpi", labelKey: "nav.agentKpi", descKey: "agentWorkspace.dashCardKpi", icon: TrendingUp },
     { href: "/agent/calendar", labelKey: "nav.agentCalendar", descKey: "agentWorkspace.dashCardCalendar", icon: Calendar },
     { href: "/agent/view", labelKey: "nav.agentView", descKey: "agentWorkspace.dashCardMonth", icon: BarChart3 },
     { href: "/agent/shiftplan", labelKey: "nav.agentShiftplan", descKey: "agentWorkspace.dashCardShiftplan", icon: ClipboardList },
@@ -276,7 +278,7 @@ export default function AgentDashboardPage() {
           <CardTitle>{t("agentWorkspace.dashQuickLinks")}</CardTitle>
           <CardDescription>{t("agentWorkspace.dashQuickLinksHint")}</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           {quickLinks.map((item) => {
             const Icon = item.icon;
             return (
