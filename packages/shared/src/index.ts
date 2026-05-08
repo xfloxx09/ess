@@ -21,6 +21,12 @@ export interface CurrentUser {
   locale: string;
   visibleViews: AppViewKey[];
   accessRoles: Array<{ id: string; name: string; slug: string }>;
+  agentContext?: {
+    teamId: string;
+    teamName: string;
+    projectId: string | null;
+    projectName: string | null;
+  };
 }
 
 export interface ProductPremium {

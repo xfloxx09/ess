@@ -1,8 +1,21 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../../lib/api";
-import { toMessage, useRequireAuth } from "../../../lib/auth";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { api } from "@/lib/api";
+import { toMessage, useAuth, useRequireAuth } from "@/lib/auth";
+import { useT } from "@/i18n/provider";
+import { formatDate, formatEuro } from "@/lib/utils";
 
 type CatalogResponse = {
   projects: Array<{ id: string; name: string }>;
@@ -16,14 +29,17 @@ type SalesEntry = {
   productId: string;
   quantity: number;
   callDate: string;
-  contractRef?: string;
-  orderRef?: string;
+  contractRef?: string | null;
+  orderRef?: string | null;
+  note?: string | null;
+  createdAt: string;
 };
 
 export default function AgentSalesPage() {
-  const { token, loading } = useRequireAuth(["AGENT"]);
-  const [catalog, setCatalog] = useState<CatalogResponse>({ projects: [], products: [], premiums: [] });
-  const [entries, setEntries] = useState<SalesEntry[]>([]);
+  const auth = useRequireAuth(["AGENT"]);
+  const { user } = useAuth();
+  const t = useT();
+  const qc = useQueryClient();
   const [category, setCategory] = useState("All");
   const [form, setForm] = useState({
     projectId: "",
@@ -34,227 +50,338 @@ export default function AgentSalesPage() {
     orderRef: "",
     note: "",
   });
-  const [status, setStatus] = useState("Ready for new entry");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [premiumsOpen, setPremiumsOpen] = useState(false);
 
-  const selectedPremium = useMemo(() => {
-    return (
-      catalog.premiums.find((item) => item.projectId === form.projectId && item.productId === form.productId)?.amountEuro ??
-      0
-    );
-  }, [catalog.premiums, form.productId, form.projectId]);
+  const catalog = useQuery({
+    queryKey: ["sales", "catalog"],
+    queryFn: () => api<CatalogResponse>("/sales/catalog", { token: auth.token ?? undefined }),
+    enabled: !!auth.token,
+  });
 
-  const categories = useMemo(() => ["All", ...new Set(catalog.products.map((product) => product.category))], [catalog.products]);
-  const visibleProducts = useMemo(
-    () => catalog.products.filter((product) => category === "All" || product.category === category),
-    [catalog.products, category],
-  );
+  const entries = useQuery({
+    queryKey: ["sales", "mine"],
+    queryFn: () => api<SalesEntry[]>("/sales/mine", { token: auth.token ?? undefined }),
+    enabled: !!auth.token,
+  });
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-    Promise.all([
-      api<CatalogResponse>("/sales/catalog", undefined, token),
-      api<SalesEntry[]>("/sales/mine", undefined, token),
-    ])
-      .then(([catalogData, myEntries]) => {
-        setCatalog(catalogData);
-        setEntries(myEntries);
-        if (catalogData.projects[0] && !form.projectId) {
-          setForm((prev) => ({ ...prev, projectId: catalogData.projects[0].id }));
-        }
-        if (catalogData.products[0] && !form.productId) {
-          setForm((prev) => ({ ...prev, productId: catalogData.products[0].id }));
-        }
-      })
-      .catch((error) => setStatus(toMessage(error)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    if (!catalog.data) return;
+    const preferred = user?.agentContext?.projectId;
+    setForm((prev) => {
+      const next = { ...prev };
+      if (preferred && catalog.data!.projects.some((p) => p.id === preferred)) {
+        next.projectId = preferred;
+      } else if (!next.projectId && catalog.data!.projects[0]) {
+        next.projectId = catalog.data!.projects[0].id;
+      }
+      if (!next.productId && catalog.data!.products[0]) {
+        next.productId = catalog.data!.products[0].id;
+      }
+      return next;
+    });
+  }, [catalog.data, user?.agentContext?.projectId]);
 
-  async function submit() {
-    if (!token) {
-      return;
-    }
-    try {
-      const created = await api<SalesEntry>(
-        "/sales",
-        {
-          method: "POST",
-          body: JSON.stringify(form),
+  const categories = useMemo(
+    () => ["All", ...new Set((catalog.data?.products ?? []).map((p) => p.category))],
+    [catalog.data?.products],
+  );
+  const visibleProducts = useMemo(() => {
+    const prods = catalog.data?.products ?? [];
+    return prods.filter((p) => category === "All" || p.category === category);
+  }, [catalog.data?.products, category]);
+
+  const selectedPremium = useMemo(() => {
+    const premiums = catalog.data?.premiums ?? [];
+    return premiums.find((x) => x.projectId === form.projectId && x.productId === form.productId)?.amountEuro ?? 0;
+  }, [catalog.data?.premiums, form.productId, form.projectId]);
+
+  const createEntry = useMutation({
+    mutationFn: () =>
+      api<SalesEntry>("/sales", {
+        method: "POST",
+        body: {
+          projectId: form.projectId,
+          productId: form.productId,
+          quantity: form.quantity,
+          callDate: form.callDate,
+          contractRef: form.contractRef || undefined,
+          orderRef: form.orderRef || undefined,
+          note: form.note || undefined,
         },
-        token,
-      );
-      setEntries((prev) => [created, ...prev]);
-      setStatus(`Entry saved (+${(selectedPremium * form.quantity).toFixed(2)} EUR estimated premium)`);
-    } catch (error) {
-      setStatus(toMessage(error));
-    }
+        token: auth.token ?? undefined,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sales", "mine"] });
+      toast.success(`${formatEuro(selectedPremium * form.quantity)} ${t("sales.table.premium")}`);
+    },
+    onError: (e) => toast.error(toMessage(e)),
+  });
+
+  const removeEntry = useMutation({
+    mutationFn: (id: string) => api(`/sales/mine?id=${encodeURIComponent(id)}`, { method: "DELETE", token: auth.token ?? undefined }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["sales", "mine"] }),
+    onError: (e) => toast.error(toMessage(e)),
+  });
+
+  const list = entries.data ?? [];
+  const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+  const pageClamped = Math.min(page, totalPages);
+  const slice = useMemo(
+    () => list.slice((pageClamped - 1) * pageSize, pageClamped * pageSize),
+    [list, pageClamped, pageSize],
+  );
+
+  if (auth.loading || !auth.token) {
+    return <p className="p-6 text-muted-foreground">{t("app.loading")}</p>;
   }
 
-  async function removeEntry(id: string) {
-    if (!token) {
-      return;
-    }
-    try {
-      await api(`/sales/mine?id=${id}`, { method: "DELETE" }, token);
-      setEntries((prev) => prev.filter((entry) => entry.id !== id));
-      setStatus("Entry removed");
-    } catch (error) {
-      setStatus(toMessage(error));
-    }
-  }
-
-  if (loading) {
-    return <p className="status-ok">Loading sales workspace...</p>;
-  }
+  const projects = catalog.data?.projects ?? [];
+  const premiums = catalog.data?.premiums ?? [];
 
   return (
-    <div className="stack">
-      <div className="page-head">
-        <h2>Sales-Erfassung</h2>
-        <p>Track every closed product with project-linked premium logic and payout traceability.</p>
+    <>
+      <PageHeader title={t("agentWorkspace.salesTitle")} description={t("agentWorkspace.salesSubtitle")} />
+
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t("agentWorkspace.details")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.employeeId")}</p>
+            <p className="font-mono font-medium">{user?.id.slice(0, 8)}…</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.name")}</p>
+            <p className="font-medium">{user?.fullName}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.defaultProject")}</p>
+            <p className="font-medium">{user?.agentContext?.projectName ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.team")}</p>
+            <p className="font-medium">{user?.agentContext?.teamName ?? "—"}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => void entries.refetch()} disabled={entries.isFetching}>
+          <RefreshCw className={entries.isFetching ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
+          {t("agentWorkspace.refresh")}
+        </Button>
+        <Button type="button" variant="secondary" size="sm" onClick={() => setPremiumsOpen(true)}>
+          {t("agentWorkspace.premiumLists")}
+        </Button>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <p className="label">My Entries</p>
-          <p className="value">{entries.length}</p>
-        </div>
-        <div className="kpi-card">
-          <p className="label">Project Catalog</p>
-          <p className="value">{catalog.projects.length}</p>
-        </div>
-        <div className="kpi-card">
-          <p className="label">Categories</p>
-          <p className="value">{new Set(catalog.products.map((item) => item.category)).size}</p>
-        </div>
-        <div className="kpi-card">
-          <p className="label">Estimated Premium</p>
-          <p className="value">{(selectedPremium * form.quantity).toFixed(2)} EUR</p>
-        </div>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>{t("agentWorkspace.dataset")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>{t("sales.table.project")} *</Label>
+            <Select value={form.projectId} onValueChange={(v) => setForm((p) => ({ ...p, projectId: v }))}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Kategorie</Label>
+            <Select
+              value={category}
+              onValueChange={(v) => {
+                setCategory(v);
+                const first = catalog.data?.products.find((p) => v === "All" || p.category === v);
+                if (first) setForm((prev) => ({ ...prev, productId: first.id }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>{t("sales.table.product")} *</Label>
+            <Select value={form.productId} onValueChange={(v) => setForm((p) => ({ ...p, productId: v }))}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleProducts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.category} · {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>CRMT / Auftragsnummer</Label>
+            <Input value={form.orderRef} onChange={(e) => setForm((p) => ({ ...p, orderRef: e.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("sales.table.contractRef")}</Label>
+            <Input value={form.contractRef} onChange={(e) => setForm((p) => ({ ...p, contractRef: e.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label>Prämierungsnummer / Notiz</Label>
+            <Input value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("sales.table.quantity")} *</Label>
+            <Input
+              type="number"
+              min={1}
+              value={form.quantity}
+              onChange={(e) => setForm((p) => ({ ...p, quantity: Math.max(1, Number(e.target.value) || 1) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Stichtag *</Label>
+            <Input type="date" value={form.callDate} onChange={(e) => setForm((p) => ({ ...p, callDate: e.target.value }))} />
+          </div>
+          <div className="flex items-end gap-3 md:col-span-2">
+            <Button onClick={() => createEntry.mutate()} disabled={createEntry.isPending || !form.projectId || !form.productId}>
+              + {t("app.create")}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {t("sales.table.premium")}: {formatEuro(selectedPremium)} × {form.quantity} = {formatEuro(selectedPremium * form.quantity)}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="panel grid cols-2">
-        <label>
-          Project
-          <select value={form.projectId} onChange={(event) => setForm((prev) => ({ ...prev, projectId: event.target.value }))}>
-            {catalog.projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Product Category
-          <select
-            value={category}
-            onChange={(event) => {
-              const nextCategory = event.target.value;
-              setCategory(nextCategory);
-              const first = catalog.products.find((product) => nextCategory === "All" || product.category === nextCategory);
-              if (first) {
-                setForm((prev) => ({ ...prev, productId: first.id }));
-              }
-            }}
-          >
-            {categories.map((entry) => (
-              <option key={entry} value={entry}>
-                {entry}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Product
-          <select value={form.productId} onChange={(event) => setForm((prev) => ({ ...prev, productId: event.target.value }))}>
-            {visibleProducts.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.category} · {product.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Quantity
-          <input
-            type="number"
-            min={1}
-            value={form.quantity}
-            onChange={(event) => setForm((prev) => ({ ...prev, quantity: Number(event.target.value) }))}
-          />
-        </label>
-        <label>
-          Call Date
-          <input
-            type="date"
-            value={form.callDate}
-            onChange={(event) => setForm((prev) => ({ ...prev, callDate: event.target.value }))}
-          />
-        </label>
-        <label>
-          Vertragsnummer
-          <input
-            value={form.contractRef}
-            onChange={(event) => setForm((prev) => ({ ...prev, contractRef: event.target.value }))}
-          />
-        </label>
-        <label>
-          Auftragsnummer
-          <input value={form.orderRef} onChange={(event) => setForm((prev) => ({ ...prev, orderRef: event.target.value }))} />
-        </label>
-        <label style={{ gridColumn: "1 / -1" }}>
-          Notiz
-          <textarea value={form.note} onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))} />
-        </label>
-        <div className="row">
-          <button onClick={submit}>Anlegen</button>
-          <span className="pill">Premium per item: {selectedPremium.toFixed(2)} EUR</span>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle>{t("agentWorkspace.contractsOverview")}</CardTitle>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">{t("agentWorkspace.page")}</span>
+            <Input
+              className="h-8 w-14"
+              type="number"
+              min={1}
+              max={totalPages}
+              value={pageClamped}
+              onChange={(e) => setPage(Math.max(1, Number(e.target.value) || 1))}
+            />
+            <span className="text-muted-foreground">/ {totalPages}</span>
+            <span className="text-muted-foreground">{t("agentWorkspace.rows")}</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+              <SelectTrigger className="h-8 w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("agentWorkspace.name")}</TableHead>
+                <TableHead>{t("sales.table.project")}</TableHead>
+                <TableHead>{t("sales.table.product")}</TableHead>
+                <TableHead>Stichtag</TableHead>
+                <TableHead>{t("sales.table.quantity")}</TableHead>
+                <TableHead>{t("sales.table.premium")}</TableHead>
+                <TableHead>Einbuchung</TableHead>
+                <TableHead>Vertrag / Auftrag</TableHead>
+                <TableHead className="text-right">{t("app.actions")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {slice.map((entry) => {
+                const prem =
+                  catalog.data?.premiums.find((p) => p.projectId === entry.projectId && p.productId === entry.productId)?.amountEuro ?? 0;
+                return (
+                  <TableRow key={entry.id}>
+                    <TableCell className="font-medium">{user?.fullName}</TableCell>
+                    <TableCell>{projects.find((p) => p.id === entry.projectId)?.name}</TableCell>
+                    <TableCell>{catalog.data?.products.find((p) => p.id === entry.productId)?.name}</TableCell>
+                    <TableCell>{formatDate(entry.callDate)}</TableCell>
+                    <TableCell className="tabular-nums">{entry.quantity}</TableCell>
+                    <TableCell className="tabular-nums">{formatEuro(prem * entry.quantity)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(entry.createdAt)}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
+                      {entry.contractRef ?? "—"} / {entry.orderRef ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeEntry.mutate(entry.id)}>
+                        {t("app.delete")}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {slice.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
+                    {t("app.noData")}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {(pageClamped - 1) * pageSize + 1}-{Math.min(pageClamped * pageSize, list.length)} {t("app.of")} {list.length}
+          </p>
+        </CardContent>
+      </Card>
 
-      <p className={status.toLowerCase().includes("saved") ? "status-ok" : "status-bad"}>{status}</p>
-
-      <div className="panel">
-        <h3>Recent Sales</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Project</th>
-              <th>Product</th>
-              <th>Qty</th>
-              <th>Premium Est.</th>
-              <th>Contract / Order</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.slice(0, 12).map((entry) => (
-              <tr key={entry.id}>
-                <td>{entry.callDate}</td>
-                <td>{catalog.projects.find((p) => p.id === entry.projectId)?.name ?? entry.projectId}</td>
-                <td>{catalog.products.find((p) => p.id === entry.productId)?.name ?? entry.productId}</td>
-                <td>{entry.quantity}</td>
-                <td>{((catalog.premiums.find((p) => p.projectId === entry.projectId && p.productId === entry.productId)?.amountEuro ?? 0) * entry.quantity).toFixed(2)} EUR</td>
-                <td>
-                  {entry.contractRef ?? "-"} / {entry.orderRef ?? "-"}
-                </td>
-                <td>
-                  <button className="btn-danger" onClick={() => removeEntry(entry.id)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {entries.length === 0 && (
-              <tr>
-                <td colSpan={7}>No entries yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Dialog open={premiumsOpen} onOpenChange={setPremiumsOpen}>
+        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("agentWorkspace.premiumLists")}</DialogTitle>
+          </DialogHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("sales.table.product")}</TableHead>
+                <TableHead className="text-right">{t("sales.table.premium")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {premiums
+                .filter((pr) => pr.projectId === form.projectId)
+                .map((pr) => {
+                  const prod = catalog.data?.products.find((p) => p.id === pr.productId);
+                  return (
+                    <TableRow key={pr.id}>
+                      <TableCell>{prod ? `${prod.category} · ${prod.name}` : pr.productId}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatEuro(pr.amountEuro)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

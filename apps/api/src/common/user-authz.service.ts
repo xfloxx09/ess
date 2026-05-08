@@ -94,6 +94,22 @@ export class UserAuthzService {
       slug: a.accessRole.slug,
     }));
 
+    let agentContext: RequestUser["agentContext"];
+    if (user.role === "AGENT" && user.teamId) {
+      const team = await this.prisma.team.findUnique({
+        where: { id: user.teamId },
+        select: { id: true, name: true, project: { select: { id: true, name: true } } },
+      });
+      if (team) {
+        agentContext = {
+          teamId: team.id,
+          teamName: team.name,
+          projectId: team.project?.id ?? null,
+          projectName: team.project?.name ?? null,
+        };
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -104,6 +120,7 @@ export class UserAuthzService {
       visibleViews,
       allowedProjectIds,
       accessRoles,
+      agentContext,
     };
   }
 }

@@ -143,6 +143,7 @@ function normaliseUser(user: CurrentUser): CurrentUser {
     accessRoles: user.accessRoles ?? [],
     teamId: user.teamId ?? null,
     locale: user.locale ?? "de",
+    agentContext: user.agentContext,
   };
 }
 

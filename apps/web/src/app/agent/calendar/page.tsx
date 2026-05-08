@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../../lib/api";
-import { toMessage, useRequireAuth } from "../../../lib/auth";
+import { RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/api";
+import { toMessage, useAuth, useRequireAuth } from "@/lib/auth";
+import { useT } from "@/i18n/provider";
+import { currentMonthKey } from "@/lib/utils";
 
 type BookingType = {
   id: string;
@@ -37,8 +45,10 @@ type TimeSetter = (value: TimeBlock | ((prev: TimeBlock) => TimeBlock)) => void;
 
 export default function CalendarPage() {
   const { token, loading } = useRequireAuth(["AGENT"]);
-  const [month, setMonth] = useState(nextMonthKey());
-  const [date, setDate] = useState(`${nextMonthKey()}-01`);
+  const { user } = useAuth();
+  const t = useT();
+  const [month, setMonth] = useState(currentMonthKey());
+  const [date, setDate] = useState(`${currentMonthKey()}-01`);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [bookingTypeId, setBookingTypeId] = useState("");
   const [bookingTypes, setBookingTypes] = useState<BookingType[]>([]);
@@ -72,6 +82,23 @@ export default function CalendarPage() {
   const activeBooking = bookings.find((entry) => entry.date === date);
   const activeType = bookingTypes.find((entry) => entry.id === activeBooking?.bookingTypeId);
   const sortedBookings = useMemo(() => [...bookings].sort((a, b) => a.date.localeCompare(b.date)), [bookings]);
+
+  async function reloadMonth() {
+    if (!token) return;
+    try {
+      const [types, myBookings, changes] = await Promise.all([
+        api<BookingType[]>("/calendar/booking-types", undefined, token),
+        api<Booking[]>(`/calendar/mine?month=${month}`, undefined, token),
+        api<BookingHistory[]>(`/calendar/history?month=${month}`, undefined, token),
+      ]);
+      setBookingTypes(types);
+      setBookings(myBookings);
+      setHistory(changes);
+      setStatus(t("agentWorkspace.show") + " OK");
+    } catch (error) {
+      setStatus(toMessage(error));
+    }
+  }
 
   function openBookingModal(day: string) {
     setDate(day);
@@ -210,23 +237,53 @@ export default function CalendarPage() {
   const monthTitle = monthStart.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 
   return (
-    <div className="stack">
-      <div className="page-head">
-        <h2>Terminkalender</h2>
-        <p>Klick auf einen Tag: Pop-up mit Kategorien Schichten, Urlaub und Krank melden.</p>
-      </div>
+    <>
+      <PageHeader title={t("agentWorkspace.bookingTitle")} description={t("agentWorkspace.bookingSubtitle")} />
 
-      <div className="panel">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "end" }}>
-          <label style={{ maxWidth: 260 }}>
-            Monat
-            <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t("agentWorkspace.details")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.name")}</p>
+            <p className="font-medium">{user?.fullName}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.employeeId")}</p>
+            <p className="font-mono font-medium">{user?.id.slice(0, 8)}…</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.team")}</p>
+            <p className="font-medium">{user?.agentContext?.teamName ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.statusFest")}</p>
+            <p className="font-medium">AGENT</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-end justify-between gap-4 pt-6">
+          <label className="space-y-2">
+            <span className="text-sm font-medium">{t("roster.day")}</span>
+            <input
+              type="month"
+              value={month}
+              className="flex h-9 w-44 rounded-md border border-input bg-background px-2 text-sm"
+              onChange={(event) => setMonth(event.target.value)}
+            />
           </label>
-          <span className="pill">{monthTitle}</span>
-        </div>
-      </div>
+          <span className="text-sm text-muted-foreground">{monthTitle}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void reloadMonth()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {t("agentWorkspace.show")}
+          </Button>
+        </CardContent>
+      </Card>
 
-      <div className="kpi-grid">
+      <div className="kpi-grid mb-4">
         <div className="kpi-card">
           <p className="label">Gebuchte Tage</p>
           <p className="value">{bookings.length}</p>
@@ -289,18 +346,14 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>Buchen: {date}</h3>
-              <button className="btn-secondary" onClick={() => setIsModalOpen(false)}>
-                Schließen
-              </button>
-            </div>
-            <p style={{ marginTop: 8, marginBottom: 8 }}>
-              Aktuell: {activeType ? `${activeType.emoji ?? ""} ${activeType.label}` : "Keine Buchung"}
-            </p>
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Buchen: {date}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Aktuell: {activeType ? `${activeType.emoji ?? ""} ${activeType.label}` : "Keine Buchung"}
+          </p>
 
             <div className="booking-category">
               <h4>Schichten buchen</h4>
@@ -368,89 +421,96 @@ export default function CalendarPage() {
               </div>
             )}
 
-            <div className="row" style={{ marginTop: 12 }}>
-              <button onClick={saveBooking}>Buchung speichern</button>
+            <DialogFooter className="gap-2 sm:justify-start">
+              <Button type="button" onClick={saveBooking}>
+                Buchung speichern
+              </Button>
               {activeBooking && (
-                <button className="btn-danger" onClick={() => removeBooking(activeBooking.date)}>
+                <Button type="button" variant="destructive" onClick={() => removeBooking(activeBooking.date)}>
                   Buchung entfernen
-                </button>
+                </Button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <div className="panel">
-        <h3>My booked days ({month})</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th>Shift blocks</th>
-              <th>Version</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedBookings.map((booking) => (
-              <tr key={booking.id}>
-                <td>{booking.date}</td>
-                <td>{bookingTypes.find((type) => type.id === booking.bookingTypeId)?.label ?? booking.bookingTypeId}</td>
-                <td>{booking.blocks.map((block) => `${block.start}-${block.end}`).join(", ")}</td>
-                <td>v{booking.version}</td>
-                <td>
-                  <button className="btn-danger" onClick={() => removeBooking(booking.date)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {bookings.length === 0 && (
-              <tr>
-                <td colSpan={5}>No bookings in selected month.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>My booked days ({month})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Shift blocks</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedBookings.map((booking) => (
+                <TableRow key={booking.id}>
+                  <TableCell>{booking.date}</TableCell>
+                  <TableCell>{bookingTypes.find((type) => type.id === booking.bookingTypeId)?.label ?? booking.bookingTypeId}</TableCell>
+                  <TableCell>{booking.blocks.map((block) => `${block.start}-${block.end}`).join(", ")}</TableCell>
+                  <TableCell>v{booking.version}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeBooking(booking.date)}>
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {bookings.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    No bookings in selected month.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-      <div className="panel">
-        <h3>Booking history ({month})</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Date</th>
-              <th>Action</th>
-              <th>Version</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.slice(0, 100).map((entry) => (
-              <tr key={entry.id}>
-                <td>{entry.atIso}</td>
-                <td>{entry.date}</td>
-                <td>{entry.action}</td>
-                <td>{entry.version}</td>
-              </tr>
-            ))}
-            {history.length === 0 && (
-              <tr>
-                <td colSpan={4}>No changes logged in selected month.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Booking history ({month})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Version</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {history.slice(0, 100).map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell>{entry.atIso}</TableCell>
+                  <TableCell>{entry.date}</TableCell>
+                  <TableCell>{entry.action}</TableCell>
+                  <TableCell>{entry.version}</TableCell>
+                </TableRow>
+              ))}
+              {history.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    No changes logged in selected month.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </>
   );
-}
-
-function nextMonthKey() {
-  const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function resolveCategory(type: BookingType): "SHIFT" | "VACATION" | "SICK" {

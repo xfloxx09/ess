@@ -11,4 +11,11 @@ export interface RequestUser {
   /** When non-null, controlling/admin endpoints filter to these project ids. */
   allowedProjectIds: string[] | null;
   accessRoles: Array<{ id: string; name: string; slug: string }>;
+  /** Populated for agents: home team and project for sales defaults and UI headers. */
+  agentContext?: {
+    teamId: string;
+    teamName: string;
+    projectId: string | null;
+    projectName: string | null;
+  };
 }

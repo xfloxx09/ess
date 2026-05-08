@@ -1,8 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { api } from "../../../lib/api";
-import { toMessage, useRequireAuth } from "../../../lib/auth";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/api";
+import { toMessage, useAuth, useRequireAuth } from "@/lib/auth";
+import { useT } from "@/i18n/provider";
+import { currentMonthKey, formatDate, formatEuro } from "@/lib/utils";
 
 type AgentMonthResponse = {
   days: Array<{
@@ -44,152 +55,231 @@ type AgentMonthResponse = {
   };
 };
 
+function prevMonthKey(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, (m ?? 1) - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function AgentViewPage() {
-  const { token, loading } = useRequireAuth(["AGENT"]);
-  const [month, setMonth] = useState("2026-04");
-  const [data, setData] = useState<AgentMonthResponse | null>(null);
-  const [status, setStatus] = useState("Click Anzeigen");
+  const auth = useRequireAuth(["AGENT"]);
+  const { user } = useAuth();
+  const t = useT();
+  const [month, setMonth] = useState(currentMonthKey());
+  const [compact, setCompact] = useState(true);
 
-  async function load() {
-    if (!token) {
-      return;
-    }
-    try {
-      const response = await api<AgentMonthResponse>(`/kpi/agent-month?month=${month}`, undefined, token);
-      setData(response);
-      setStatus("Loaded");
-    } catch (error) {
-      setStatus(toMessage(error));
-    }
+  const monthData = useQuery({
+    queryKey: ["kpi", "agent-month", month],
+    queryFn: () => api<AgentMonthResponse>(`/kpi/agent-month?month=${encodeURIComponent(month)}`, { token: auth.token ?? undefined }),
+    enabled: !!auth.token,
+  });
+
+  const prevKey = useMemo(() => prevMonthKey(month), [month]);
+  const prevSales = useQuery({
+    queryKey: ["kpi", "agent-month", prevKey, "sales-only"],
+    queryFn: () => api<AgentMonthResponse>(`/kpi/agent-month?month=${encodeURIComponent(prevKey)}`, { token: auth.token ?? undefined }),
+    enabled: !!auth.token,
+  });
+
+  const productiveHoursIb = (m: number) => m / 60;
+
+  if (auth.loading || !auth.token) {
+    return <p className="p-6 text-muted-foreground">{t("app.loading")}</p>;
   }
 
-  if (loading) {
-    return <p className="status-ok">Loading AgentView...</p>;
-  }
+  const data = monthData.data;
+  const err = monthData.error ? toMessage(monthData.error) : null;
 
   return (
-    <div className="stack">
-      <div className="page-head">
-        <h2>AgentView (FEST)</h2>
-        <p>Daily KPI visibility with transparent monthly payout simulation.</p>
-      </div>
+    <>
+      <PageHeader title={t("agentWorkspace.myMonthTitle")} description={t("agentWorkspace.myMonthSubtitle")} />
 
-      <div className="panel row">
-        <label>
-          Month
-          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-        </label>
-        <button onClick={load}>Anzeigen</button>
-      </div>
-      <p className={status === "Loaded" ? "status-ok" : "status-bad"}>{status}</p>
+      <Card className="mb-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{t("agentWorkspace.details")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.name")}</p>
+            <p className="font-medium">{user?.fullName}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.defaultProject")}</p>
+            <p className="font-medium">{user?.agentContext?.projectName ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.team")}</p>
+            <p className="font-medium">{user?.agentContext?.teamName ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">{t("agentWorkspace.statusFest")}</p>
+            <p className="font-medium">AGENT</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-end gap-4 pt-6">
+          <div className="space-y-2">
+            <Label>{t("roster.day")}</Label>
+            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" />
+          </div>
+          <div className="flex items-center gap-2 pb-2">
+            <Switch id="compact" checked={compact} onCheckedChange={setCompact} />
+            <Label htmlFor="compact">{compact ? t("agentWorkspace.compact") : t("agentWorkspace.detailed")}</Label>
+          </div>
+          <Button type="button" variant="secondary" onClick={() => void monthData.refetch()} disabled={monthData.isFetching}>
+            <RefreshCw className={monthData.isFetching ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
+            {t("agentWorkspace.show")}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {err && <p className="mb-4 text-sm text-destructive">{err}</p>}
 
       {data && (
         <>
-          <div className="kpi-grid">
-            <div className="kpi-card">
-              <p className="label">Minute IB</p>
-              <p className="value">{data.totals.minuteIb}</p>
-            </div>
-            <div className="kpi-card">
-              <p className="label">Minute OB</p>
-              <p className="value">{data.totals.minuteOb}</p>
-            </div>
-            <div className="kpi-card">
-              <p className="label">Wartezeit</p>
-              <p className="value">{data.totals.waitMinutes}</p>
-            </div>
-            <div className="kpi-card">
-              <p className="label">Antrag paid min</p>
-              <p className="value">{data.totals.antragPaidMinutes}</p>
-            </div>
-            <div className="kpi-card">
-              <p className="label">Antrag pending (15m slots)</p>
-              <p className="value">{data.totals.antragPendingSlots}</p>
-            </div>
-            <div className="kpi-card">
-              <p className="label">Gesamt EUR</p>
-              <p className="value">{data.abrechnung.totalEuro.toFixed(2)}</p>
-            </div>
+          <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">IB (min)</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold tabular-nums">{data.totals.minuteIb}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">OB (min)</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold tabular-nums">{data.totals.minuteOb}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t("dashboard.totalPayout")}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold tabular-nums">{formatEuro(data.abrechnung.totalEuro)}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t("agentWorkspace.productiveHours")}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-semibold tabular-nums">{productiveHoursIb(data.totals.minuteIb).toFixed(2)} h</CardContent>
+            </Card>
           </div>
 
-          <div className="panel">
-            <h3>Daily KPI Ledger</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Datum</th>
-                  <th>Booked</th>
-                  <th>A (15m)</th>
-                  <th>P (15m)</th>
-                  <th>Antrag paid</th>
-                  <th>Antrag paid (Typen)</th>
-                  <th>Antrag pending</th>
-                  <th>Agreed</th>
-                  <th>Diff</th>
-                  <th>Minute IB</th>
-                  <th>Minute OB</th>
-                  <th>Wartezeit</th>
-                  <th>Base</th>
-                  <th>Sales</th>
-                  <th>NPS</th>
-                  <th>Day Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.days.map((day) => (
-                  <tr key={day.id}>
-                    <td>{day.date}</td>
-                    <td>
-                      {day.bookingLabel ?? "-"} {day.bookingCode ? `(${day.bookingCode})` : ""}
-                    </td>
-                    <td>{day.approvedA}</td>
-                    <td>{day.approvedP}</td>
-                    <td>
-                      {day.antragPaidSlots} slots / {day.antragPaidMinutes} min
-                    </td>
-                    <td>{day.antragPaidTypes.length > 0 ? day.antragPaidTypes.join(", ") : "-"}</td>
-                    <td>
-                      {day.antragPendingSlots > 0
-                        ? `${day.antragPendingSlots} slots (${day.antragPendingCount} Anträge)`
-                        : "-"}
-                    </td>
-                    <td>{day.agreedSlots}</td>
-                    <td>{day.disagreedSlots}</td>
-                    <td>{day.minuteIb}</td>
-                    <td>{day.minuteOb}</td>
-                    <td>{day.waitMinutes}</td>
-                    <td>{day.baseEuro.toFixed(2)} EUR</td>
-                    <td>{day.salesEuro.toFixed(2)} EUR</td>
-                    <td>{day.npsEuro.toFixed(2)} EUR</td>
-                    <td>{day.dayEuro.toFixed(2)} EUR</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-6 grid gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Abrechnung</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex justify-between border-b py-2">
+                  <span className="text-muted-foreground">Minutenabrechnung (Basis)</span>
+                  <span className="font-medium tabular-nums">{formatEuro(data.abrechnung.baseEuro)}</span>
+                </div>
+                <div className="flex justify-between border-b py-2">
+                  <span className="text-muted-foreground">Sales (Monat)</span>
+                  <span className="font-medium tabular-nums">{formatEuro(data.abrechnung.salesEuro)}</span>
+                </div>
+                <div className="flex justify-between border-b py-2">
+                  <span className="text-muted-foreground">NPS / Import</span>
+                  <span className="font-medium tabular-nums">{formatEuro(data.abrechnung.npsEuro)}</span>
+                </div>
+                <div className="flex justify-between border-b py-2">
+                  <span className="text-muted-foreground">Bonus Vormonat (Sales)</span>
+                  <span className="font-medium tabular-nums">
+                    {prevSales.data ? formatEuro(prevSales.data.abrechnung.salesEuro) : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 text-base font-semibold">
+                  <span>Gesamtabrechnung</span>
+                  <span className="tabular-nums">{formatEuro(data.abrechnung.totalEuro)}</span>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Abrechnung erweitert</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Wartezeit (min)</span>
+                  <span className="tabular-nums">{data.totals.waitMinutes}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Antrag bezahlt (min)</span>
+                  <span className="tabular-nums">{data.totals.antragPaidMinutes}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Antrag offen (Slots)</span>
+                  <span className="tabular-nums">{data.totals.antragPendingSlots}</span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          <div className="panel">
-            <h3>Abrechnung</h3>
-            <div className="kpi-grid">
-              <div className="kpi-card">
-                <p className="label">Basis</p>
-                <p className="value">{data.abrechnung.baseEuro.toFixed(2)} EUR</p>
-              </div>
-              <div className="kpi-card">
-                <p className="label">Sales</p>
-                <p className="value">{data.abrechnung.salesEuro.toFixed(2)} EUR</p>
-              </div>
-              <div className="kpi-card">
-                <p className="label">NPS</p>
-                <p className="value">{data.abrechnung.npsEuro.toFixed(2)} EUR</p>
-              </div>
-              <div className="kpi-card">
-                <p className="label">Gesamt</p>
-                <p className="value">{data.abrechnung.totalEuro.toFixed(2)} EUR</p>
-              </div>
-            </div>
-          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("agentWorkspace.dailyLedger")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Datum</TableHead>
+                    <TableHead>Projekt / Buchung</TableHead>
+                    {!compact && <TableHead className="text-right">A (15m)</TableHead>}
+                    {!compact && <TableHead className="text-right">P (15m)</TableHead>}
+                    <TableHead className="text-right">IB min</TableHead>
+                    <TableHead className="text-right">OB min</TableHead>
+                    <TableHead className="text-right">Warte</TableHead>
+                    {!compact && <TableHead className="text-right">Antrag ±</TableHead>}
+                    <TableHead className="text-right">{t("agentWorkspace.productiveHours")}</TableHead>
+                    <TableHead className="text-right">{t("agentWorkspace.minutesEuro")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow className="bg-muted/50 font-medium">
+                    <TableCell colSpan={2}>{t("agentWorkspace.summaryRow")}</TableCell>
+                    {!compact && <TableCell />}
+                    {!compact && <TableCell />}
+                    <TableCell className="text-right tabular-nums">{data.totals.minuteIb}</TableCell>
+                    <TableCell className="text-right tabular-nums">{data.totals.minuteOb}</TableCell>
+                    <TableCell className="text-right tabular-nums">{data.totals.waitMinutes}</TableCell>
+                    {!compact && <TableCell className="text-right tabular-nums">{data.totals.antragPaidMinutes}</TableCell>}
+                    <TableCell className="text-right tabular-nums">{productiveHoursIb(data.totals.minuteIb).toFixed(2)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatEuro(data.abrechnung.totalEuro)}</TableCell>
+                  </TableRow>
+                  {data.days.map((day) => (
+                    <TableRow key={day.id}>
+                      <TableCell>{formatDate(day.date)}</TableCell>
+                      <TableCell className="max-w-[220px] truncate text-muted-foreground">
+                        {user?.agentContext?.projectName ?? "—"} · {day.bookingLabel ?? "—"} {day.bookingCode ? `(${day.bookingCode})` : ""}
+                      </TableCell>
+                      {!compact && <TableCell className="text-right tabular-nums">{day.approvedA}</TableCell>}
+                      {!compact && <TableCell className="text-right tabular-nums">{day.approvedP}</TableCell>}
+                      <TableCell className="text-right tabular-nums">{day.minuteIb}</TableCell>
+                      <TableCell className="text-right tabular-nums">{day.minuteOb}</TableCell>
+                      <TableCell className="text-right tabular-nums">{day.waitMinutes}</TableCell>
+                      {!compact && (
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {day.antragPaidMinutes > 0 ? `+${day.antragPaidMinutes}` : ""}
+                          {day.antragPendingSlots > 0 ? ` / offen ${day.antragPendingSlots}` : ""}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right tabular-nums">{productiveHoursIb(day.minuteIb).toFixed(2)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatEuro(day.dayEuro)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </>
       )}
-    </div>
+
+      {!monthData.isLoading && !data && !err && (
+        <p className="text-sm text-muted-foreground">{t("agentWorkspace.show")} …</p>
+      )}
+    </>
   );
 }
