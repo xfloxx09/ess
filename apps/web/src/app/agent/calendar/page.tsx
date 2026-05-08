@@ -324,21 +324,31 @@ export default function CalendarPage() {
             return (
               <button
                 key={cell}
+                type="button"
                 className={`calendar-day ${date === cell ? "calendar-day-active" : ""}`}
-                style={dayType ? { borderColor: `${dayType.color}66`, background: `${dayType.color}16` } : undefined}
+                style={
+                  dayType
+                    ? {
+                        borderColor: dayType.color,
+                        background: `color-mix(in srgb, ${dayType.color} 18%, hsl(var(--card)))`,
+                      }
+                    : undefined
+                }
                 onClick={() => openBookingModal(cell)}
               >
-                <div>{cell.slice(-2)}</div>
-                <div className="calendar-day-type">
+                <div className="flex w-full shrink-0 items-start justify-end">
+                  <span className="calendar-day-num">{cell.slice(-2)}</span>
+                </div>
+                <div className="calendar-day-body">
                   {dayType ? (
-                    <span className="inline-flex max-w-full items-center justify-center gap-1.5">
-                      <span className="inline-flex shrink-0" style={{ color: dayType.color }}>
-                        <BookingTypeIcon code={dayType.code} className="h-4 w-4" />
+                    <>
+                      <span className="inline-flex rounded-md bg-background/60 p-1.5 shadow-sm ring-1 ring-border/60" style={{ color: dayType.color }}>
+                        <BookingTypeIcon code={dayType.code} className="h-5 w-5" />
                       </span>
-                      <span className="truncate">{dayType.label}</span>
-                    </span>
+                      <span className="calendar-day-type w-full">{dayType.label}</span>
+                    </>
                   ) : (
-                    "—"
+                    <span className="text-sm text-muted-foreground">—</span>
                   )}
                 </div>
               </button>

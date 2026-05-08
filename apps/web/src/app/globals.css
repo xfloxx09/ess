@@ -237,22 +237,40 @@
 
   /* ----- Calendar (agent/calendar) ----- */
   .calendar-grid {
-    @apply grid grid-cols-7 gap-2;
+    @apply grid grid-cols-7 gap-3;
+  }
+  /* Weekday row: taller than default .pill so labels are easy to scan */
+  .pill.calendar-weekday {
+    @apply min-h-11 justify-center py-2.5 text-sm font-semibold tracking-wide text-foreground;
   }
   .calendar-weekday {
     @apply justify-center text-center;
   }
   .calendar-day {
-    @apply flex h-20 cursor-pointer flex-col items-start gap-1 rounded-md border border-border bg-card p-2 text-left text-sm font-medium shadow-sm transition hover:border-primary hover:bg-accent;
+    @apply flex min-h-[6.25rem] cursor-pointer flex-col rounded-lg border-2 border-border bg-card p-3 text-left shadow-sm transition hover:border-primary hover:bg-accent/80;
   }
   .calendar-day-active {
-    @apply border-primary ring-2 ring-primary/40;
+    @apply border-primary ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+  }
+  .calendar-day-num {
+    @apply text-lg font-semibold tabular-nums leading-none text-foreground;
+  }
+  .calendar-day-body {
+    @apply mt-2 flex flex-1 flex-col items-center justify-center gap-2 text-center;
   }
   .calendar-day-type {
-    @apply text-xs font-normal text-muted-foreground;
+    @apply line-clamp-2 text-sm font-medium leading-snug text-foreground;
   }
   .calendar-empty {
-    @apply h-20 rounded-md border border-dashed border-border/50 bg-muted/20;
+    @apply min-h-[6.25rem] rounded-lg border-2 border-dashed border-border/60 bg-muted/25;
+  }
+
+  /* ----- Shiftplan grid (agent/shiftplan) ----- */
+  .shiftplan-grid .shiftplan-slot-head {
+    @apply min-w-[2.5rem] max-w-[2.75rem];
+  }
+  .shiftplan-grid .shiftplan-slot-cell {
+    @apply min-w-[2.5rem] max-w-[2.75rem];
   }
 
   /* ----- Modal ----- */
@@ -269,7 +287,7 @@
     @apply mt-2 flex flex-wrap gap-2;
   }
   .booking-category button {
-    @apply h-auto px-3 py-1.5 text-xs;
+    @apply h-auto min-h-10 px-4 py-2 text-sm;
   }
 
   /* ----- Toolbar ----- */

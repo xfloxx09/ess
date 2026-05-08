@@ -191,27 +191,44 @@ export default function ShiftplanPage() {
               <CardTitle>{t("agentWorkspace.shiftGrid")} ({slotLabel(SLOT_START)}–{slotLabel(SLOT_END - 1)})</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto p-0">
-              <div className="min-w-[1200px]">
-                <table className="w-full border-collapse text-[10px]">
+              <div className="min-w-[2280px]">
+                <table className="shiftplan-grid w-full border-collapse text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="sticky left-0 z-10 min-w-[120px] bg-muted/40 px-1 py-1 text-left font-medium">Tag</th>
-                      {slotIndices.map((si) => (
-                        <th key={si} className="border-l px-0 py-1 text-center font-normal text-muted-foreground">
-                          {slotLabel(si)}
-                        </th>
-                      ))}
+                      <th className="sticky left-0 z-20 min-w-[148px] border-r bg-muted/40 px-3 py-3 text-left text-sm font-semibold">
+                        Tag
+                      </th>
+                      {slotIndices.map((si) => {
+                        const isHour = si % 4 === 0;
+                        return (
+                          <th
+                            key={si}
+                            className={cn(
+                              "shiftplan-slot-head border-l border-border/70 px-1 py-2 text-center align-bottom font-medium leading-tight",
+                              isHour ? "text-foreground" : "text-muted-foreground/70",
+                            )}
+                            title={slotLabel(si)}
+                          >
+                            {isHour ? (
+                              <span className="block text-[11px] font-semibold tabular-nums">{slotLabel(si)}</span>
+                            ) : (
+                              <span className="block text-[10px] tabular-nums opacity-80">{slotLabel(si).slice(-2)}</span>
+                            )}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
                     {dayRows.map(({ date, summary }) => {
                       const rowMap = cellsByDate.get(date);
                       return (
-                        <tr key={date} className="border-b">
-                          <td className="sticky left-0 z-10 bg-background px-1 py-0.5 text-xs font-medium">
+                        <tr key={date} className="border-b border-border/60">
+                          <td className="sticky left-0 z-10 border-r bg-background px-3 py-2 text-sm font-medium leading-snug">
                             {formatDate(date)}
-                            <div className="text-[10px] font-normal text-muted-foreground">
-                              {summary?.booking ?? "—"} {summary?.bookingCode ? `· ${summary.bookingCode}` : ""}
+                            <div className="mt-1 text-xs font-normal text-muted-foreground">
+                              {summary?.booking ?? "—"}
+                              {summary?.bookingCode ? ` · ${summary.bookingCode}` : ""}
                             </div>
                           </td>
                           {slotIndices.map((si) => {
@@ -222,13 +239,16 @@ export default function ShiftplanPage() {
                             return (
                               <td
                                 key={si}
-                                className={cn("border-l px-0 py-0 text-center", !agreed && cell && "ring-1 ring-destructive/60")}
+                                className={cn(
+                                  "shiftplan-slot-cell border-l border-border/50 px-1 py-1.5 text-center text-xs font-semibold tabular-nums tracking-wide",
+                                  !agreed && cell && "ring-1 ring-inset ring-destructive/70",
+                                )}
                                 style={
                                   code
-                                    ? { backgroundColor: `${bg}33`, color: "var(--foreground)" }
-                                    : { backgroundColor: "var(--muted)", opacity: 0.35 }
+                                    ? { backgroundColor: `${bg}40`, color: "var(--foreground)" }
+                                    : { backgroundColor: "hsl(var(--muted) / 0.45)" }
                                 }
-                                title={cell ? `${code} / raw ${cell.rawCode}` : ""}
+                                title={cell ? `${slotLabel(si)} — ${code} (raw ${cell.rawCode})` : slotLabel(si)}
                               >
                                 {code || ""}
                               </td>
