@@ -186,35 +186,38 @@ export default function ShiftplanPage() {
             </Card>
           </div>
 
-          <Card className="mb-6 overflow-hidden">
+          <Card className="mb-6">
             <CardHeader>
               <CardTitle>{t("agentWorkspace.shiftGrid")} ({slotLabel(SLOT_START)}–{slotLabel(SLOT_END - 1)})</CardTitle>
+              <p className="text-xs text-muted-foreground">{t("agentWorkspace.shiftplanScrollHint")}</p>
             </CardHeader>
-            <CardContent className="overflow-x-auto p-0">
-              <div className="min-w-[2280px]">
-                <table className="shiftplan-grid w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b bg-muted/40">
-                      <th className="sticky left-0 z-20 min-w-[148px] border-r bg-muted/40 px-3 py-3 text-left text-sm font-semibold">
-                        Tag
-                      </th>
-                      {slotIndices.map((si) => {
-                        const isHour = si % 4 === 0;
-                        return (
-                          <th
-                            key={si}
-                            className={cn(
-                              "shiftplan-slot-head border-l border-border/70 px-1 py-2 text-center align-bottom font-medium leading-tight",
-                              isHour ? "text-foreground" : "text-muted-foreground/70",
-                            )}
-                            title={slotLabel(si)}
-                          >
-                            {isHour ? (
-                              <span className="block text-[11px] font-semibold tabular-nums">{slotLabel(si)}</span>
-                            ) : (
-                              <span className="block text-[10px] tabular-nums opacity-80">{slotLabel(si).slice(-2)}</span>
-                            )}
-                          </th>
+            <CardContent className="p-0">
+              <div className="shiftplan-scroll-wrap ring-1 ring-border/40">
+                <div className="shiftplan-scroll-inner">
+                  <table className="shiftplan-grid w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="shiftplan-corner" scope="col">
+                          Tag
+                        </th>
+                        {slotIndices.map((si) => {
+                          const isHour = si % 4 === 0;
+                          return (
+                            <th
+                              key={si}
+                              className={cn(
+                                "shiftplan-slot-head border-l border-border/70 px-1 py-2 text-center align-bottom font-medium leading-tight",
+                                isHour ? "text-foreground" : "text-muted-foreground/70",
+                              )}
+                              scope="col"
+                              title={slotLabel(si)}
+                            >
+                              {isHour ? (
+                                <span className="block text-[11px] font-semibold tabular-nums">{slotLabel(si)}</span>
+                              ) : (
+                                <span className="block text-[10px] tabular-nums opacity-80">{slotLabel(si).slice(-2)}</span>
+                              )}
+                            </th>
                         );
                       })}
                     </tr>
@@ -224,7 +227,7 @@ export default function ShiftplanPage() {
                       const rowMap = cellsByDate.get(date);
                       return (
                         <tr key={date} className="border-b border-border/60">
-                          <td className="sticky left-0 z-10 border-r bg-background px-3 py-2 text-sm font-medium leading-snug">
+                          <td className="shiftplan-corner-cell">
                             {formatDate(date)}
                             <div className="mt-1 text-xs font-normal text-muted-foreground">
                               {summary?.booking ?? "—"}
@@ -258,7 +261,8 @@ export default function ShiftplanPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -236,41 +236,82 @@
   }
 
   /* ----- Calendar (agent/calendar) ----- */
+  /* Laptop / small desktop: slightly tighter grid; large screens breathe more */
+  .calendar-panel {
+    @apply mx-auto w-full max-w-6xl;
+  }
   .calendar-grid {
-    @apply grid grid-cols-7 gap-3;
+    @apply grid grid-cols-7 gap-2 sm:gap-3;
   }
   /* Weekday row: taller than default .pill so labels are easy to scan */
   .pill.calendar-weekday {
-    @apply min-h-11 justify-center py-2.5 text-sm font-semibold tracking-wide text-foreground;
+    @apply min-h-10 justify-center py-2 text-xs font-semibold tracking-wide text-foreground sm:min-h-11 sm:py-2.5 sm:text-sm;
   }
   .calendar-weekday {
     @apply justify-center text-center;
   }
   .calendar-day {
-    @apply flex min-h-[6.25rem] cursor-pointer flex-col rounded-lg border-2 border-border bg-card p-3 text-left shadow-sm transition hover:border-primary hover:bg-accent/80;
+    @apply flex min-h-[5.5rem] cursor-pointer flex-col rounded-lg border-2 border-border bg-card p-2 text-left shadow-sm transition hover:border-primary hover:bg-accent/80 sm:min-h-[6.25rem] sm:p-3;
   }
   .calendar-day-active {
-    @apply border-primary ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+    @apply border-primary ring-2 ring-primary/40 ring-offset-1 ring-offset-background sm:ring-offset-2;
   }
   .calendar-day-num {
-    @apply text-lg font-semibold tabular-nums leading-none text-foreground;
+    @apply text-base font-semibold tabular-nums leading-none text-foreground sm:text-lg;
   }
   .calendar-day-body {
-    @apply mt-2 flex flex-1 flex-col items-center justify-center gap-2 text-center;
+    @apply mt-1.5 flex flex-1 flex-col items-center justify-center gap-1.5 text-center sm:mt-2 sm:gap-2;
   }
   .calendar-day-type {
-    @apply line-clamp-2 text-sm font-medium leading-snug text-foreground;
+    @apply line-clamp-2 text-xs font-medium leading-snug text-foreground sm:text-sm;
   }
   .calendar-empty {
-    @apply min-h-[6.25rem] rounded-lg border-2 border-dashed border-border/60 bg-muted/25;
+    @apply min-h-[5.5rem] rounded-lg border-2 border-dashed border-border/60 bg-muted/25 sm:min-h-[6.25rem];
   }
 
   /* ----- Shiftplan grid (agent/shiftplan) ----- */
+  /* Scroll both ways on laptops; sticky time row + sticky day column stay usable */
+  .shiftplan-scroll-wrap {
+    @apply relative overflow-auto overscroll-x-contain;
+    max-height: min(70vh, 52rem);
+  }
+  @media (min-width: 1536px) {
+    .shiftplan-scroll-wrap {
+      max-height: min(78vh, 56rem);
+    }
+  }
+  .shiftplan-scroll-inner {
+    @apply w-max min-w-full pb-1;
+  }
   .shiftplan-grid .shiftplan-slot-head {
     @apply min-w-[2.5rem] max-w-[2.75rem];
   }
   .shiftplan-grid .shiftplan-slot-cell {
     @apply min-w-[2.5rem] max-w-[2.75rem];
+  }
+  /* Narrower laptops: same 48 slots, slightly denser columns */
+  @media (max-width: 1536px) {
+    .shiftplan-grid .shiftplan-slot-head,
+    .shiftplan-grid .shiftplan-slot-cell {
+      min-width: 2.125rem;
+      max-width: 2.5rem;
+    }
+  }
+  @media (max-width: 1280px) {
+    .shiftplan-grid .shiftplan-slot-head,
+    .shiftplan-grid .shiftplan-slot-cell {
+      min-width: 2rem;
+      max-width: 2.35rem;
+    }
+  }
+  .shiftplan-grid thead th.shiftplan-corner {
+    @apply sticky left-0 top-0 z-[35] min-w-[140px] border-r border-border bg-muted px-2 py-2 text-left text-xs font-semibold shadow-[4px_0_12px_-4px_rgba(0,0,0,0.12)] sm:min-w-[148px] sm:px-3 sm:py-3 sm:text-sm;
+  }
+  .shiftplan-grid thead th.shiftplan-slot-head {
+    @apply sticky top-0 z-[30] bg-muted;
+  }
+  .shiftplan-grid tbody td.shiftplan-corner-cell {
+    @apply sticky left-0 z-[20] min-w-[140px] border-r border-border bg-background px-2 py-1.5 text-xs font-medium leading-snug shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] sm:min-w-[148px] sm:px-3 sm:py-2 sm:text-sm;
   }
 
   /* ----- Modal ----- */

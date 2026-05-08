@@ -307,7 +307,7 @@ export default function CalendarPage() {
         {status}
       </p>
 
-      <div className="panel">
+      <div className="panel calendar-panel">
         <h3>Open booking calendar</h3>
         <div className="calendar-grid">
           {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((weekday) => (

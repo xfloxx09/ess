@@ -245,6 +245,7 @@
     "shiftplanTitle": "Mein Schichtplan",
     "shiftplanSubtitle": "15-Minuten-Nachweis; Abgleich Rohdaten vs. Controlling.",
     "shiftGrid": "Schichtraster",
+    "shiftplanScrollHint": "Raster seitwärts scrollen — alle 15-Minuten-Slots bleiben erhalten.",
     "slot": "Slot",
     "page": "Seite",
     "rows": "Zeilen"

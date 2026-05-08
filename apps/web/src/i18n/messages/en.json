@@ -245,6 +245,7 @@
     "shiftplanTitle": "My roster",
     "shiftplanSubtitle": "15-minute evidence; raw vs controlling.",
     "shiftGrid": "Shift grid",
+    "shiftplanScrollHint": "Scroll sideways to see every 15-minute slot — nothing is hidden.",
     "slot": "Slot",
     "page": "Page",
     "rows": "Rows"
