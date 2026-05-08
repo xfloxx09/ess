@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { calendarBatchBookingSchema } from "@ess/shared";
-import type { CalendarBatchBookingDto, CalendarBookingDto } from "@ess/shared";
+import { calendarBatchBookingSchema, calendarBookRequestSchema } from "@ess/shared";
+import type { CalendarBatchBookingDto, CalendarBookRequestDto } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import { AuditService } from "../audit/audit.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -19,11 +19,9 @@ export class CalendarController {
 
   @Post("book")
   @Roles("AGENT")
-  async book(
-    @Req() req: { user: RequestUser },
-    @Body() dto: CalendarBookingDto & { expectedVersion?: number },
-  ) {
-    const booking = await this.calendar.book(req.user.id, dto, (dto as { expectedVersion?: number }).expectedVersion);
+  async book(@Req() req: { user: RequestUser }, @Body(Body$(calendarBookRequestSchema)) dto: CalendarBookRequestDto) {
+    const { expectedVersion, ...bookingDto } = dto;
+    const booking = await this.calendar.book(req.user.id, bookingDto, expectedVersion);
     await this.audit.log(req.user.id, "CREATE", "calendar.booking", booking.id, booking);
     return booking;
   }

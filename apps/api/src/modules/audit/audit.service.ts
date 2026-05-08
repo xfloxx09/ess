@@ -1,6 +1,17 @@
 import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../common/prisma.service";
+
+/** Prisma Json columns only accept JSON-serialisable values (no Date, Decimal, etc.). */
+function toAuditJsonPayload(payload: unknown): Prisma.InputJsonValue {
+  try {
+    return JSON.parse(
+      JSON.stringify(payload, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
+    ) as Prisma.InputJsonValue;
+  } catch {
+    return { _serializationError: true } as Prisma.InputJsonValue;
+  }
+}
 
 @Injectable()
 export class AuditService {
@@ -13,7 +24,7 @@ export class AuditService {
         action,
         resource,
         resourceId: resourceId ?? null,
-        payload: (payload ?? null) as Prisma.InputJsonValue,
+        payload: payload === undefined || payload === null ? Prisma.DbNull : toAuditJsonPayload(payload),
         ipAddress: ipAddress ?? null,
       },
     });

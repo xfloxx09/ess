@@ -64,6 +64,12 @@ export const calendarBookingSchema = z.object({
 });
 export type CalendarBookingDto = z.infer<typeof calendarBookingSchema>;
 
+/** POST /calendar/book body (includes optimistic-lock version when re-saving). */
+export const calendarBookRequestSchema = calendarBookingSchema.extend({
+  expectedVersion: z.number().int().min(1).optional(),
+});
+export type CalendarBookRequestDto = z.infer<typeof calendarBookRequestSchema>;
+
 export const calendarBatchBookingSchema = z.object({
   dates: z.array(dateString).min(1).max(40),
   bookingTypeId: z.string().min(1),
