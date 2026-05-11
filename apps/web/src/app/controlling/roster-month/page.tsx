@@ -5,7 +5,6 @@ import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterAgentDayModal } from "../RosterAgentDayModal";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
-import { RosterSchichtplanStatistik } from "../RosterSchichtplanStatistik";
 
 type Project = { id: string; name: string };
 type DayCell = {
@@ -87,23 +86,16 @@ export default function RosterMonthPage() {
   }
 
   return (
-    <div className="stack ctrl-roster-page ctrl-roster-month-page">
+    <div className="stack">
       <div className="page-head">
         <h2>Monatsschichtplan</h2>
         <p>
           Pro Tag ein Kästchen: <strong>grün</strong> = A, <strong>grau</strong> = leer, <strong>gelb</strong> = ohne A, <strong>rand rot</strong> =
           Abweichungen. <strong>Linksklick</strong> öffnet die Tageszeile zum Bearbeiten. <strong>Rechtsklick</strong>: Schnellmenü (FTE, kopieren,
-          Tag leeren). Links: Kalender-Auswertung.
+          Tag leeren). Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
-      <div className="ctrl-roster-layout">
-        {token && projectId ? (
-          <aside className="ctrl-roster-aside panel">
-            <RosterSchichtplanStatistik token={token} projectId={projectId} syncedMonth={month} initialScope="month" />
-          </aside>
-        ) : null}
-        <div className="ctrl-roster-main stack min-w-0">
       <div className="panel row">
         <label>
           Projekt
@@ -247,8 +239,6 @@ export default function RosterMonthPage() {
             </div>
           </div>
         ))}
-        </div>
-      </div>
     </div>
   );
 }

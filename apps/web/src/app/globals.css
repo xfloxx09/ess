@@ -437,59 +437,6 @@
     @apply flex items-center gap-2 text-sm;
   }
 
-  .ctrl-roster-layout {
-    @apply flex flex-col gap-4 lg:flex-row lg:items-start;
-  }
-  .ctrl-roster-aside {
-    @apply w-full shrink-0 lg:sticky lg:top-3 lg:w-[280px] lg:max-w-[280px];
-  }
-  .ctrl-roster-main {
-    @apply min-w-0 flex-1;
-  }
-
-  .ctrl-roster-stat-panel__title {
-    @apply m-0 text-sm font-semibold leading-tight;
-  }
-  .ctrl-roster-stat-panel__scope {
-    @apply flex gap-1;
-  }
-  .ctrl-roster-stat-tab {
-    @apply flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60;
-  }
-  .ctrl-roster-stat-tab--on {
-    @apply border-primary bg-primary/10 text-foreground;
-  }
-  .ctrl-roster-stat-field {
-    @apply flex flex-col gap-1 text-xs;
-  }
-  .ctrl-roster-stat-field span:first-child {
-    @apply text-muted-foreground;
-  }
-  .ctrl-roster-stat-quick {
-    @apply flex flex-wrap gap-1;
-  }
-  .ctrl-roster-stat-kpis {
-    @apply flex flex-wrap justify-between gap-2 rounded border border-border bg-muted/20 px-2 py-1.5;
-  }
-  .ctrl-roster-stat-cats {
-    @apply flex flex-col gap-1 rounded border border-dashed border-border px-2 py-1.5;
-  }
-  .ctrl-roster-stat-cat-row {
-    @apply flex items-center justify-between gap-2;
-  }
-  .ctrl-roster-stat-list {
-    @apply m-0 max-h-[min(50vh,22rem)] list-none space-y-1 overflow-auto p-0;
-  }
-  .ctrl-roster-stat-list__row {
-    @apply flex items-center gap-2 border-b border-border/60 py-0.5 last:border-0;
-  }
-  .ctrl-roster-stat-code {
-    @apply inline-flex min-w-[2rem] justify-center rounded border bg-card px-1 font-mono font-semibold;
-  }
-  .ctrl-roster-stat-list__lbl {
-    @apply min-w-0 flex-1 truncate text-muted-foreground;
-  }
-
   .month-cell {
     @apply rounded border border-border bg-card p-2 text-xs;
   }

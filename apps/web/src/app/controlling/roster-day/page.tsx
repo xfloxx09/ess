@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
-import { RosterSchichtplanStatistik } from "../RosterSchichtplanStatistik";
 import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
 import { immutPatchSlot, slotStartLabel } from "../roster-shared";
 
@@ -336,17 +335,10 @@ export default function RosterDayPage() {
         <h2>Controlling · Tagesmatrix</h2>
         <p>
           Projekt und Tag wählen. <strong>Linksklick ziehen</strong> zum Malen (kein Markieren). <strong>Doppelklick</strong> auf eine belegte
-          Zelle: sofort leeren. <strong>Rechtsklick</strong>: Menü (FTE, kopieren, …). Links: Kalender-Auswertung (Früh, Urlaub, Krank, …).
+          Zelle: sofort leeren. <strong>Rechtsklick</strong>: Menü (FTE, kopieren, …). Kalender-Auswertung: Navigation <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
-      <div className="ctrl-roster-layout">
-        {token && projectId ? (
-          <aside className="ctrl-roster-aside panel">
-            <RosterSchichtplanStatistik token={token} projectId={projectId} syncedDay={date} initialScope="day" />
-          </aside>
-        ) : null}
-        <div className="ctrl-roster-main stack min-w-0">
       <div className="ctrl-roster-toolbar panel">
         <div className="ctrl-roster-toolbar__row">
           <label className="ctrl-roster-field">
@@ -523,8 +515,6 @@ export default function RosterDayPage() {
           )}
         </section>
       ))}
-        </div>
-      </div>
     </div>
   );
 }
