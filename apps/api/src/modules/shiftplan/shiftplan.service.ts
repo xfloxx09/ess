@@ -185,6 +185,68 @@ export class ShiftplanService {
     return { projectId, projectName: project.name, month, dates, teams: teamPayload };
   }
 
+  /** Aggregates agent calendar bookings (Kalender: Früh, Urlaub, Krank, …) for all agents in a project. */
+  async projectCalendarBookingStats(projectId: string, user: RequestUser | undefined, opts: { month: string } | { date: string }) {
+    await this.assertProjectVisible(user, projectId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+    if (!project) throw new NotFoundException("Project not found");
+    const agentIds = await this.listProjectAgentIds(projectId);
+    const dateWhere = "date" in opts ? { date: opts.date } : { date: { startsWith: opts.month } };
+    if (agentIds.length === 0) {
+      return {
+        projectId,
+        projectName: project.name,
+        scope: "date" in opts ? ("day" as const) : ("month" as const),
+        month: "month" in opts ? opts.month : undefined,
+        date: "date" in opts ? opts.date : undefined,
+        agentsInProject: 0,
+        totalBookings: 0,
+        byType: [] as Array<{ code: string; label: string; category: string; color: string; count: number }>,
+        categoryTotals: { SHIFT: 0, VACATION: 0, SICK: 0 },
+      };
+    }
+    const grouped = await this.prisma.calendarBooking.groupBy({
+      by: ["bookingTypeId"],
+      where: { agentId: { in: agentIds }, ...dateWhere },
+      _count: { _all: true },
+    });
+    const typeRows = await this.prisma.bookingType.findMany({
+      where: { id: { in: grouped.map((g) => g.bookingTypeId) } },
+    });
+    const typeMap = new Map(typeRows.map((t) => [t.id, t]));
+    const byType = grouped
+      .map((g) => {
+        const t = typeMap.get(g.bookingTypeId);
+        return {
+          code: t?.code ?? "?",
+          label: t?.label ?? "Unbekannt",
+          category: t?.category ?? "SHIFT",
+          color: t?.color ?? "#999999",
+          count: g._count._all,
+        };
+      })
+      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+    const categoryTotals = { SHIFT: 0, VACATION: 0, SICK: 0 };
+    for (const row of byType) {
+      const k = row.category as keyof typeof categoryTotals;
+      if (k in categoryTotals) {
+        categoryTotals[k] += row.count;
+      }
+    }
+    const totalBookings = grouped.reduce((s, g) => s + g._count._all, 0);
+    return {
+      projectId,
+      projectName: project.name,
+      scope: "date" in opts ? ("day" as const) : ("month" as const),
+      month: "month" in opts ? opts.month : undefined,
+      date: "date" in opts ? opts.date : undefined,
+      agentsInProject: agentIds.length,
+      totalBookings,
+      byType,
+      categoryTotals,
+    };
+  }
+
   async listCodes() {
     return this.prisma.quarterHourCode.findMany({ where: { active: true }, orderBy: { code: "asc" } });
   }

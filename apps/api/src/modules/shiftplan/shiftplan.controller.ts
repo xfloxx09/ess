@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { AppViewKey, UserRole } from "@ess/shared";
 import {
   shiftCellBulkClearSchema,
@@ -128,6 +128,27 @@ export class ShiftplanController {
   @Access(SHIFTPLAN_CTRL)
   rosterMonth(@Req() req: { user: RequestUser }, @Query("projectId") projectId: string, @Query("month") month: string) {
     return this.shiftplan.rosterProjectMonth(projectId, month, req.user);
+  }
+
+  /** Kalenderbuchungen je Buchungstyp (Früh, Spät, Urlaub, Krank, …) für alle Agenten des Projekts — Tag oder Monat. */
+  @Get("calendar-booking-stats")
+  @Access(SHIFTPLAN_CTRL)
+  calendarBookingStats(
+    @Req() req: { user: RequestUser },
+    @Query("projectId") projectId: string,
+    @Query("month") month?: string,
+    @Query("date") date?: string,
+  ) {
+    if (!projectId) {
+      throw new BadRequestException("projectId is required");
+    }
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return this.shiftplan.projectCalendarBookingStats(projectId, req.user, { date });
+    }
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      return this.shiftplan.projectCalendarBookingStats(projectId, req.user, { month });
+    }
+    throw new BadRequestException("Provide date=YYYY-MM-DD or month=YYYY-MM");
   }
 
   @Get("reconciliation")

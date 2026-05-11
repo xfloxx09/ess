@@ -71,7 +71,7 @@ async function main() {
     create: { id: "team-sued", name: "Team Süd", projectId: projectGk.id },
     update: {},
   });
-  await prisma.team.upsert({
+  const teamRetention = await prisma.team.upsert({
     where: { id: "team-retention" },
     create: { id: "team-retention", name: "Team Retention", projectId: projectTel.id },
     update: {},
@@ -117,6 +117,62 @@ async function main() {
     },
     update: { teamId: teamSued.id },
   });
+
+  // ~34 weitere Agenten (insgesamt ~36) auf GK (Nord/Süd) und Telekom Retention — gleiches Passwort wie Demo-Accounts
+  const bulkNord = 17;
+  const bulkSued = 11;
+  const bulkRet = 8;
+  for (let i = 1; i <= bulkNord; i++) {
+    const n = String(i).padStart(3, "0");
+    await prisma.user.upsert({
+      where: { email: `bulk.nord.${n}@ess.local` },
+      create: {
+        email: `bulk.nord.${n}@ess.local`,
+        fullName: `Demo Nord ${n}`,
+        role: "AGENT",
+        passwordHash,
+        hourlyRateEuro: 11 + (i % 5) * 0.25,
+        locale: "de",
+        teamId: teamNord.id,
+        fte: [0.75, 1, 1][i % 3],
+      },
+      update: { teamId: teamNord.id, role: "AGENT", active: true, deletedAt: null },
+    });
+  }
+  for (let i = 1; i <= bulkSued; i++) {
+    const n = String(i).padStart(3, "0");
+    await prisma.user.upsert({
+      where: { email: `bulk.sued.${n}@ess.local` },
+      create: {
+        email: `bulk.sued.${n}@ess.local`,
+        fullName: `Demo Süd ${n}`,
+        role: "AGENT",
+        passwordHash,
+        hourlyRateEuro: 11.5,
+        locale: "de",
+        teamId: teamSued.id,
+        fte: [1, 0.8, 1][i % 3],
+      },
+      update: { teamId: teamSued.id, role: "AGENT", active: true, deletedAt: null },
+    });
+  }
+  for (let i = 1; i <= bulkRet; i++) {
+    const n = String(i).padStart(3, "0");
+    await prisma.user.upsert({
+      where: { email: `bulk.ret.${n}@ess.local` },
+      create: {
+        email: `bulk.ret.${n}@ess.local`,
+        fullName: `Demo Retention ${n}`,
+        role: "AGENT",
+        passwordHash,
+        hourlyRateEuro: 12,
+        locale: "de",
+        teamId: teamRetention.id,
+        fte: 1,
+      },
+      update: { teamId: teamRetention.id, role: "AGENT", active: true, deletedAt: null },
+    });
+  }
 
   // ---------- Access roles ----------
   const roleSchichtplan = await prisma.accessRole.upsert({
@@ -388,6 +444,39 @@ async function main() {
     }
   }
 
+  const bulkAgentRows = await prisma.user.findMany({
+    where: { email: { startsWith: "bulk." } },
+    select: { id: true },
+  });
+  const rot = ["FR", "SN", "FR", "U", "K", "F", "SOS", "UK", "SU"];
+  for (const target of bulkAgentRows) {
+    for (let day = 1; day <= 16; day++) {
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      const weekday = new Date(`${date}T12:00:00`).getDay();
+      if (weekday === 0 || weekday === 6) continue;
+      const code = rot[(day + target.id.length) % rot.length];
+      const bt = bookingByCode[code];
+      if (!bt) continue;
+      const blocks =
+        bt.code === "SN"
+          ? [{ start: "14:00", end: "19:00" }, { start: "22:30", end: "02:30" }]
+          : bt.code === "FR"
+            ? [{ start: "09:00", end: "17:00" }]
+            : [];
+      await prisma.calendarBooking.upsert({
+        where: { agentId_date: { agentId: target.id, date } },
+        create: {
+          agentId: target.id,
+          date,
+          bookingTypeId: bt.id,
+          blocks: blocks as Prisma.InputJsonValue,
+          version: 1,
+        },
+        update: {},
+      });
+    }
+  }
+
   const monthKey = currentMonthKey();
   for (const row of [
     { category: "Internet", calls: 120 },
@@ -437,6 +526,7 @@ async function main() {
   console.log("  controlling@ess.local / ChangeMe123!");
   console.log("  agent@ess.local / ChangeMe123!");
   console.log("  agent2@ess.local / ChangeMe123!");
+  console.log("  bulk.nord.001@ess.local … bulk.ret.008@ess.local / ChangeMe123! (Kalender-Demo)");
   void admin;
   void controller;
 }
