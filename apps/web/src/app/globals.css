@@ -414,6 +414,13 @@
     @apply rounded border-0 bg-transparent px-2 py-0 text-2xl leading-none text-muted-foreground hover:bg-muted hover:text-foreground;
   }
 
+  .roster-slot-no-select {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    cursor: cell;
+  }
+
   .roster-agent-email {
     @apply text-[11px] font-normal text-muted-foreground;
   }

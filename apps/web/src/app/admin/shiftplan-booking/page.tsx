@@ -220,10 +220,28 @@ export default function AdminShiftplanBookingPage() {
     if (!token || !projectId) return;
     let pattern: Array<{ workMinutes: number; pauseMinutes: number }>;
     try {
-      pattern = JSON.parse(plannerPatternJson) as Array<{ workMinutes: number; pauseMinutes: number }>;
-      if (!Array.isArray(pattern) || pattern.length === 0) throw new Error("empty");
-    } catch {
-      setStatus("Pausen-Muster: gültiges JSON-Array erforderlich.");
+      const raw = JSON.parse(plannerPatternJson.trim()) as unknown;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        setStatus("Pausen-Muster: ein nicht leeres JSON-Array mit Objekten { workMinutes, pauseMinutes } ist nötig.");
+        return;
+      }
+      pattern = [];
+      for (const row of raw) {
+        if (typeof row !== "object" || row === null || !("workMinutes" in row) || !("pauseMinutes" in row)) {
+          setStatus("Pausen-Muster: jedes Element muss { workMinutes: Zahl, pauseMinutes: Zahl } sein.");
+          return;
+        }
+        const w = Number((row as { workMinutes: unknown }).workMinutes);
+        const p = Number((row as { pauseMinutes: unknown }).pauseMinutes);
+        if (!Number.isFinite(w) || !Number.isFinite(p)) {
+          setStatus("Pausen-Muster: workMinutes und pauseMinutes müssen Zahlen sein.");
+          return;
+        }
+        pattern.push({ workMinutes: w, pauseMinutes: p });
+      }
+    } catch (e) {
+      const hint = e instanceof SyntaxError ? ` (${e.message})` : "";
+      setStatus(`Pausen-Muster: JSON ist ungültig${hint}. Tipp: doppelte Kommas oder fehlende Anführungszeichen prüfen.`);
       return;
     }
     try {

@@ -338,8 +338,8 @@ export default function AdminOrgAccessPage() {
                     try {
                       const scopes = JSON.parse(scopesJson) as Array<{ resourceType: string; resourceId: string }>;
                       void put(`/admin/org-access/access-roles/${selectedRoleId}/scopes`, { scopes });
-                    } catch {
-                      setStatus("Ungültiges JSON für Scopes.");
+                    } catch (e) {
+                      setStatus(e instanceof SyntaxError ? `Ungültiges JSON: ${e.message}` : "Ungültiges JSON für Scopes.");
                     }
                   }}
                 >

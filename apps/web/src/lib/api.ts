@@ -102,24 +102,36 @@ export async function api<T>(path: string, optsOrInit?: ApiOptions | RequestInit
   }
 
   if (!response.ok) {
+    const text = await response.text();
     let message = `Request failed (${response.status})`;
     let issues: Array<{ path: string; message: string }> | undefined;
-    try {
-      const json = (await response.json()) as { message?: string | string[]; issues?: Array<{ path: string; message: string }> };
-      if (Array.isArray(json.message)) message = json.message.join(", ");
-      else if (json.message) message = json.message;
-      issues = json.issues;
-    } catch {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
-        const text = await response.text();
-        if (text) message = text;
+        const json = JSON.parse(trimmed) as { message?: string | string[]; issues?: Array<{ path: string; message: string }> };
+        if (Array.isArray(json.message)) message = json.message.join(", ");
+        else if (json.message) message = String(json.message);
+        issues = json.issues;
       } catch {
-        // ignore
+        if (trimmed) message = trimmed.length > 400 ? `${trimmed.slice(0, 400)}…` : trimmed;
       }
+    } else if (trimmed) {
+      message = trimmed.length > 400 ? `${trimmed.slice(0, 400)}…` : trimmed;
     }
     throw new ApiError(message, response.status, issues);
   }
 
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (!trimmed) return undefined as T;
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new ApiError(
+      `API lieferte kein gültiges JSON (${response.status}). Anfang der Antwort: ${trimmed.slice(0, 160)}${trimmed.length > 160 ? "…" : ""}`,
+      response.status,
+    );
+  }
 }

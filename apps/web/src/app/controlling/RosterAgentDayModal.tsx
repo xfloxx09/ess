@@ -155,6 +155,30 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
     }
   }, [token, load, onSaved]);
 
+  const clearSlotAt = useCallback(
+    async (slot: SlotCell) => {
+      if (!token || !dataRef.current) return;
+      if (!slot.controllerCode && !slot.rawCode) return;
+      dragRef.current = false;
+      setSaving(true);
+      try {
+        await api("/shiftplan/bulk-clear", {
+          method: "POST",
+          body: JSON.stringify({ agentId, date: dataRef.current.date, slotIndices: [slot.slotIndex] }),
+          token,
+        });
+        await load();
+        onSaved();
+      } catch (e) {
+        setStatus(toMessage(e));
+        await load();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [token, agentId, load, onSaved],
+  );
+
   useEffect(() => {
     function up() {
       if (dragRef.current) {
@@ -183,7 +207,7 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
           </button>
         </div>
         <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-          {date} · Linksklick ziehen wie in der Tagesmatrix. Rechtsklick: Schnellmenü (auch hier).
+          {date} · Linksklick ziehen (ohne Textmarkierung). <strong>Doppelklick</strong> auf belegte Zelle = leeren.
         </p>
         {status && <p className="status-bad">{status}</p>}
         {!row && data && <p className="muted">Agent nicht in diesem Tag / Projekt.</p>}
@@ -237,21 +261,28 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
                       return (
                         <td
                           key={slot.slotIndex}
-                          role="button"
+                          role="gridcell"
                           tabIndex={0}
-                          className={`roster-slot-cell ctrl-roster-slot${slot.agreed ? "" : " roster-slot-warn"}`}
+                          className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slot.agreed ? "" : " roster-slot-warn"}`}
                           style={{
                             background: slot.controllerCode ? `${bg}55` : undefined,
                             color: slot.controllerCode ? "#112033" : "#aab7c4",
                           }}
+                          title="Doppelklick = Zelle leeren"
                           onMouseDown={(e) => {
-                            if (e.button === 2) return;
+                            if (e.button !== 0) return;
                             e.preventDefault();
+                            e.stopPropagation();
                             dragRef.current = true;
                             paintSlot(slot);
                           }}
                           onMouseEnter={() => {
                             if (dragRef.current) paintSlot(slot);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void clearSlotAt(slot);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {

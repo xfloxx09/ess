@@ -254,6 +254,32 @@ export default function RosterDayPage() {
     }
   }, [token, loadProjectDay]);
 
+  const clearSlotAt = useCallback(
+    async (agentId: string, slot: SlotCell) => {
+      if (!token || !dataRef.current) return;
+      if (!slot.controllerCode && !slot.rawCode) return;
+      dragRef.current = false;
+      setSaving(true);
+      try {
+        await api<{ cleared: number }>(
+          "/shiftplan/bulk-clear",
+          {
+            method: "POST",
+            body: JSON.stringify({ agentId, date: dataRef.current.date, slotIndices: [slot.slotIndex] }),
+          },
+          token,
+        );
+        await loadProjectDay();
+      } catch (e) {
+        setStatus(toMessage(e));
+        await loadProjectDay();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [token, loadProjectDay],
+  );
+
   useEffect(() => {
     function up() {
       if (dragRef.current) {
@@ -282,6 +308,8 @@ export default function RosterDayPage() {
   const onSlotDown = useCallback(
     (agentId: string, slot: SlotCell, e: React.MouseEvent) => {
       if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
       dragRef.current = true;
       paintSlot(agentId, slot);
     },
@@ -306,8 +334,8 @@ export default function RosterDayPage() {
       <div className="page-head">
         <h2>Controlling · Tagesmatrix</h2>
         <p>
-          Projekt und Tag wählen. Linksklick mit gewähltem Code ziehen. <strong>Rechtsklick</strong> auf eine Zelle: Schnellmenü (leeren,
-          Roh = Ctrl, FTE, Tag/Monat kopieren). Symbole unter Configuration Studio (Viertelstunden-Codes).
+          Projekt und Tag wählen. <strong>Linksklick ziehen</strong> zum Malen (kein Markieren). <strong>Doppelklick</strong> auf eine belegte
+          Zelle: sofort leeren. <strong>Rechtsklick</strong>: Menü (FTE, kopieren, …). Codes unter Configuration Studio.
         </p>
       </div>
 
@@ -453,14 +481,19 @@ export default function RosterDayPage() {
                             key={slot.slotIndex}
                             role="gridcell"
                             tabIndex={0}
-                            className={`roster-slot-cell ctrl-roster-slot${slot.agreed ? "" : " roster-slot-warn"}`}
+                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slot.agreed ? "" : " roster-slot-warn"}`}
                             style={{
                               background: slot.controllerCode ? `${bg}55` : undefined,
                               color: slot.controllerCode ? "#112033" : "#aab7c4",
                             }}
-                            title={`Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Rechtsklick = Menü`}
+                            title={`Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Doppelklick = leeren · Rechtsklick = Menü`}
                             onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
                             onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
+                            onDoubleClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void clearSlotAt(row.agentId, slot);
+                            }}
                             onMouseEnter={() => onSlotEnter(row.agentId, slot)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
