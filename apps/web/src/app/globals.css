@@ -340,6 +340,31 @@
   .roster-scroll {
     @apply overflow-x-auto rounded-md border border-border;
   }
+  .ctrl-roster-day-scroll {
+    max-height: min(70vh, 820px);
+    overflow: auto;
+    position: relative;
+    @apply rounded-md border border-border;
+  }
+  .ctrl-roster-day-scroll table {
+    @apply w-max border-collapse text-xs;
+  }
+  .ctrl-roster-day-scroll thead th.roster-slot-head {
+    @apply sticky top-0 z-[12] bg-muted/95 backdrop-blur-sm;
+  }
+  .ctrl-roster-day-scroll thead th.roster-sticky-col {
+    @apply sticky left-0 z-[18] bg-card;
+  }
+  .ctrl-roster-day-scroll tbody td.roster-sticky-col {
+    @apply sticky left-0 z-[10] bg-card;
+  }
+  .ctrl-roster-day-scroll .roster-slot-head,
+  .ctrl-roster-day-scroll .roster-slot-cell {
+    width: var(--roster-slot, 22px);
+    min-width: var(--roster-slot, 22px);
+    max-width: var(--roster-slot, 22px);
+    box-sizing: border-box;
+  }
   .roster-month-table,
   .roster-scroll table {
     @apply w-max border-collapse text-xs;

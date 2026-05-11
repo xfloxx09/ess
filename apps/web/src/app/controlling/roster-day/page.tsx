@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
-import { immutPatchSlot, slotStartLabel } from "../roster-shared";
+import { immutPatchSlot, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
 
 type Project = { id: string; name: string };
 type CodeDef = { id: string; code: string; label: string; color: string };
@@ -46,6 +46,11 @@ export default function RosterDayPage() {
   const [menuY, setMenuY] = useState(0);
   const [menuTarget, setMenuTarget] = useState<RosterMenuTarget | null>(null);
 
+  const [timeWindow, setTimeWindow] = useState<string>("kern");
+  const [teamFilterId, setTeamFilterId] = useState<string>("all");
+  const [agentSearch, setAgentSearch] = useState("");
+  const [slotDensity, setSlotDensity] = useState<"kompakt" | "normal" | "weit">("normal");
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const q = new URLSearchParams(window.location.search);
@@ -64,6 +69,55 @@ export default function RosterDayPage() {
     data?.quarterHourCodes.forEach((c) => map.set(c.code, c.color));
     return map;
   }, [data]);
+
+  const slotWindow = useMemo(() => {
+    const w = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === timeWindow) ?? ROSTER_DAY_TIME_WINDOWS[0]!;
+    return { start: w.start, end: w.end, label: w.label };
+  }, [timeWindow]);
+
+  const slotIndices = useMemo(
+    () => Array.from({ length: slotWindow.end - slotWindow.start + 1 }, (_, i) => slotWindow.start + i),
+    [slotWindow.start, slotWindow.end],
+  );
+
+  const displayTeams = useMemo(() => {
+    if (!data) return [];
+    const q = agentSearch.trim().toLowerCase();
+    return data.teams
+      .filter((t) => teamFilterId === "all" || t.teamId === teamFilterId)
+      .map((team) => ({
+        ...team,
+        agents: team.agents.filter((a) => {
+          if (!q) return true;
+          return a.fullName.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
+        }),
+      }))
+      .filter((t) => t.agents.length > 0);
+  }, [data, teamFilterId, agentSearch]);
+
+  const displayAgentCount = useMemo(() => displayTeams.reduce((n, t) => n + t.agents.length, 0), [displayTeams]);
+
+  const plannerHint = useMemo(() => {
+    if (!data?.planner) return "";
+    const m = data.planner.targetDayMinutes;
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    const p = data.planner.pausePattern;
+    const pTxt =
+      p.length === 0 ? "keine Auto-Pausen" : `${p.length} Pausen-Zyklus-Schritte (${p.map((x) => `${x.workMinutes}/${x.pauseMinutes}m`).join(" · ")})`;
+    return `Soll-Arbeitstag FTE 1.0: ${h}h${r > 0 ? ` ${r}m` : ""} · ${pTxt}`;
+  }, [data]);
+
+  useLayoutEffect(() => {
+    const first = slotIndices[0];
+    if (first === undefined) return;
+    document.querySelectorAll(".ctrl-roster-day-scroll").forEach((el) => {
+      const head = el.querySelector(`[data-slot-head="${first}"]`);
+      head?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    });
+  }, [slotIndices]);
+
+  const slotPx = slotDensity === "kompakt" ? 18 : slotDensity === "weit" ? 28 : 22;
 
   const stats = useMemo(() => {
     if (!data) {
@@ -95,6 +149,10 @@ export default function RosterDayPage() {
       })
       .catch((e) => setStatus(toMessage(e)));
   }, [token]);
+
+  useEffect(() => {
+    setTeamFilterId("all");
+  }, [projectId]);
 
   useEffect(() => {
     loadProjects();
@@ -332,16 +390,17 @@ export default function RosterDayPage() {
   return (
     <div className="stack ctrl-roster-page">
       <div className="page-head">
-        <h2>Controlling · Tagesmatrix</h2>
+        <h2>Schichtplanung · Tagesmatrix</h2>
         <p>
-          Projekt und Tag wählen. <strong>Linksklick ziehen</strong> zum Malen (kein Markieren). <strong>Doppelklick</strong> auf eine belegte
-          Zelle: sofort leeren. <strong>Rechtsklick</strong>: Menü (FTE, kopieren, …). Kalender-Auswertung: Navigation <strong>Schichtplan → Bericht</strong>.
+          <strong>Raster</strong>: Linksklick ziehen (kein Markieren), Doppelklick leert eine belegte Zelle, Rechtsklick öffnet Schnellaktionen.{" "}
+          <strong>Zeitfenster</strong> und <strong>Filter</strong> reduzieren Scrollen — voller Tag nur bei Bedarf („0–24 h“). Kalender-Auswertung:{" "}
+          <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
-      <div className="ctrl-roster-toolbar panel">
-        <div className="ctrl-roster-toolbar__row">
-          <label className="ctrl-roster-field">
+      <div className="ctrl-roster-toolbar panel stack gap-3">
+        <div className="ctrl-roster-toolbar__row flex flex-wrap items-end gap-3">
+          <label className="ctrl-roster-field min-w-[10rem]">
             <span>Projekt</span>
             <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               {projects.map((p) => (
@@ -351,7 +410,7 @@ export default function RosterDayPage() {
               ))}
             </select>
           </label>
-          <label className="ctrl-roster-field">
+          <label className="ctrl-roster-field w-[11rem]">
             <span>Datum</span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
@@ -360,23 +419,69 @@ export default function RosterDayPage() {
           </button>
         </div>
         {data && (
-          <div className="ctrl-roster-meta">
-            <span>
-              <strong>{data.projectName}</strong> · {data.date}
-            </span>
-            <span>
-              {stats.teams} Teams · {stats.agents} Agenten
-            </span>
-            <span className={stats.disagree > 0 ? "ctrl-roster-warn" : ""}>{stats.disagree} Abweichungen Ctrl/Roh</span>
-            {saving && <span className="ctrl-roster-saving">Speichern…</span>}
-          </div>
+          <>
+            <div className="ctrl-roster-meta flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2 text-xs">
+              <span>
+                <strong>{data.projectName}</strong> · {data.date}
+              </span>
+              <span>
+                {stats.teams} Teams · {stats.agents} Agenten gesamt
+                {displayAgentCount !== stats.agents ? (
+                  <span className="text-muted-foreground"> · Anzeige: {displayAgentCount}</span>
+                ) : null}
+              </span>
+              <span className={stats.disagree > 0 ? "ctrl-roster-warn" : ""}>{stats.disagree} Abweichungen Ctrl/Roh</span>
+              {saving && <span className="ctrl-roster-saving">Speichern…</span>}
+            </div>
+            <div className="muted border-t border-border pt-2 text-xs leading-snug">{plannerHint}</div>
+            <div className="flex flex-col gap-2 border-t border-border pt-2 lg:flex-row lg:flex-wrap lg:items-end">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Zeitfenster (Spalten)</span>
+                <div className="flex flex-wrap gap-1">
+                  {ROSTER_DAY_TIME_WINDOWS.map((w) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      className={timeWindow === w.id ? "rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground" : "btn-secondary rounded-md px-2.5 py-1 text-xs"}
+                      onClick={() => setTimeWindow(w.id)}
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-40">
+                <span>Team</span>
+                <select value={teamFilterId} onChange={(e) => setTeamFilterId(e.target.value)}>
+                  <option value="all">Alle Teams</option>
+                  {data.teams.map((t) => (
+                    <option key={t.teamId} value={t.teamId}>
+                      {t.teamName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="ctrl-roster-field min-w-[10rem] flex-1">
+                <span>Agent suchen</span>
+                <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
+              </label>
+              <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-36">
+                <span>Zellenbreite</span>
+                <select value={slotDensity} onChange={(e) => setSlotDensity(e.target.value as typeof slotDensity)}>
+                  <option value="kompakt">Kompakt</option>
+                  <option value="normal">Normal</option>
+                  <option value="weit">Weit</option>
+                </select>
+              </label>
+            </div>
+          </>
         )}
       </div>
 
       {data && (
         <div className="ctrl-roster-palette panel">
           <div className="ctrl-roster-palette__head">
-            <span>Mal-Code (Linksklick)</span>
+            <span>Werkzeug (Malen)</span>
             <label className="ctrl-roster-check">
               <input type="checkbox" checked={preserveRaw} onChange={(e) => setPreserveRaw(e.target.checked)} />
               Rohdaten beibehalten
@@ -442,22 +547,33 @@ export default function RosterDayPage() {
 
       <p className={status.includes("Geladen") || status.includes("gespeichert") ? "status-ok" : "panel"}>{status}</p>
 
-      {data?.teams.map((team: TeamBlock) => (
-        <section key={team.teamId} className="ctrl-roster-team panel">
-          <div className="ctrl-roster-team__head">
-            <h3>{team.teamName}</h3>
-            <span className="muted">{team.agents.length} Agenten</span>
-          </div>
-          {team.agents.length === 0 ? (
-            <p className="muted">Keine Agenten in diesem Team.</p>
-          ) : (
-            <div className="roster-scroll">
+      {data && displayTeams.length === 0 && (
+        <div className="panel text-sm text-muted-foreground">
+          Keine Agentenzeilen für die aktuelle Filterkombination. Team oder Suche anpassen — oder Demo-Daten:{" "}
+          <code className="rounded bg-muted px-1">pnpm exec prisma db seed</code> im Ordner <code className="rounded bg-muted px-1">apps/api</code>{" "}
+          (legt u. a. bulk.nord.* / bulk.sued.* für GK KMU an).
+        </div>
+      )}
+
+      {data &&
+        displayTeams.map((team: TeamBlock) => (
+          <section key={team.teamId} className="ctrl-roster-team panel">
+            <div className="ctrl-roster-team__head flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="m-0">{team.teamName}</h3>
+              <span className="muted text-sm">
+                {team.agents.length} Agenten · Raster {slotStartLabel(slotWindow.start)}–{slotStartLabel(slotWindow.end)} ({slotIndices.length} Viertelstunden)
+              </span>
+            </div>
+            <div
+              className="ctrl-roster-day-scroll"
+              style={{ ["--roster-slot" as string]: `${slotPx}px` } as import("react").CSSProperties}
+            >
               <table className="roster-day-table ctrl-roster-table">
                 <thead>
                   <tr>
                     <th className="roster-sticky-col">Agent</th>
-                    {Array.from({ length: 96 }, (_, s) => (
-                      <th key={s} className="roster-slot-head" title={slotStartLabel(s)}>
+                    {slotIndices.map((s) => (
+                      <th key={s} data-slot-head={s} className="roster-slot-head" title={slotStartLabel(s)}>
                         {s % 4 === 0 ? slotStartLabel(s).slice(0, 5) : ""}
                       </th>
                     ))}
@@ -466,14 +582,17 @@ export default function RosterDayPage() {
                 <tbody>
                   {team.agents.map((row: AgentRow) => (
                     <tr key={row.agentId}>
-                      <td className="roster-sticky-col roster-agent-cell">
-                        <strong>{row.fullName}</strong>
-                        <div className="roster-agent-email">{row.email}</div>
-                        <div className="muted" style={{ fontSize: "0.75rem" }}>
-                          FTE {row.fte}
+                      <td className="roster-sticky-col roster-agent-cell max-w-[11rem]">
+                        <strong className="line-clamp-2" title={row.fullName}>
+                          {row.fullName}
+                        </strong>
+                        <div className="roster-agent-email truncate" title={row.email}>
+                          {row.email}
                         </div>
+                        <div className="muted text-[0.7rem]">FTE {row.fte}</div>
                       </td>
-                      {row.slots.map((slot) => {
+                      {slotIndices.map((slotIndex) => {
+                        const slot = row.slots[slotIndex]!;
                         const bg = slot.controllerCode ? (codeColors.get(slot.controllerCode) ?? "#dfe6ee") : "#f4f6f9";
                         const show = slot.controllerCode ?? "·";
                         return (
@@ -486,7 +605,7 @@ export default function RosterDayPage() {
                               background: slot.controllerCode ? `${bg}55` : undefined,
                               color: slot.controllerCode ? "#112033" : "#aab7c4",
                             }}
-                            title={`Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Doppelklick = leeren · Rechtsklick = Menü`}
+                            title={`${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Doppelklick = leeren · Rechtsklick = Menü`}
                             onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
                             onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
                             onDoubleClick={(e) => {
@@ -512,9 +631,8 @@ export default function RosterDayPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </section>
-      ))}
+          </section>
+        ))}
     </div>
   );
 }

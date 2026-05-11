@@ -29,6 +29,15 @@ export function slotStartLabel(slot: number): string {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+/** Voreingestellte Sichtfenster (Viertelstunden-Index 0–95), weniger horizontales Scrollen. */
+export const ROSTER_DAY_TIME_WINDOWS: ReadonlyArray<{ id: string; label: string; start: number; end: number }> = [
+  { id: "all", label: "0–24 h", start: 0, end: 95 },
+  { id: "buero", label: "06–22 h", start: 24, end: 87 },
+  { id: "kern", label: "08–18 h", start: 32, end: 71 },
+  { id: "frueh", label: "06–12 h", start: 24, end: 47 },
+  { id: "spaet", label: "14–22 h", start: 56, end: 87 },
+];
+
 export function timeToSlotIndex(hhmm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;

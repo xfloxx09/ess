@@ -118,9 +118,9 @@ async function main() {
     update: { teamId: teamSued.id },
   });
 
-  // ~34 weitere Agenten (insgesamt ~36) auf GK (Nord/Süd) und Telekom Retention — gleiches Passwort wie Demo-Accounts
-  const bulkNord = 17;
-  const bulkSued = 11;
+  // ~28 weitere Agenten auf GK CM KMU (Nord/Süd) + 2 Demo = 30 im Projekt GK; Retention = Telekom separat
+  const bulkNord = 14;
+  const bulkSued = 14;
   const bulkRet = 8;
   for (let i = 1; i <= bulkNord; i++) {
     const n = String(i).padStart(3, "0");
@@ -526,7 +526,8 @@ async function main() {
   console.log("  controlling@ess.local / ChangeMe123!");
   console.log("  agent@ess.local / ChangeMe123!");
   console.log("  agent2@ess.local / ChangeMe123!");
-  console.log("  bulk.nord.001@ess.local … bulk.ret.008@ess.local / ChangeMe123! (Kalender-Demo)");
+  console.log("  bulk.*@ess.local / ChangeMe123! — GK KMU ca. 30 Agenten (bulk.nord.001–014, bulk.sued.001–014) + Telekom-Retention-Demos.");
+  console.log("  DB mit Demo-Daten füllen: im Ordner apps/api → pnpm exec prisma db seed");
   void admin;
   void controller;
 }
