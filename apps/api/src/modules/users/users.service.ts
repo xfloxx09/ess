@@ -9,6 +9,7 @@ interface CreateUserInput {
   role: UserRole;
   password: string;
   hourlyRateEuro?: number;
+  fte?: number;
   teamId?: string | null;
   active?: boolean;
   locale?: string;
@@ -20,6 +21,7 @@ interface UpdateUserInput {
   role?: UserRole;
   password?: string;
   hourlyRateEuro?: number;
+  fte?: number;
   teamId?: string | null;
   active?: boolean;
   locale?: string;
@@ -59,6 +61,7 @@ export class UsersService {
           teamId: true,
           team: { select: { id: true, name: true, projectId: true } },
           hourlyRateEuro: true,
+          fte: true,
           createdAt: true,
           lastLoginAt: true,
           accessRoleAssignments: { select: { accessRoleId: true } },
@@ -91,6 +94,7 @@ export class UsersService {
         role: input.role,
         passwordHash,
         hourlyRateEuro: input.hourlyRateEuro ?? 0,
+        fte: input.fte ?? 1,
         teamId: input.teamId ?? null,
         active: input.active ?? true,
         locale: input.locale ?? "de",
@@ -107,6 +111,7 @@ export class UsersService {
     if (input.fullName) data.fullName = input.fullName;
     if (input.role) data.role = input.role;
     if (input.hourlyRateEuro !== undefined) data.hourlyRateEuro = input.hourlyRateEuro;
+    if (input.fte !== undefined) data.fte = input.fte;
     if (input.teamId !== undefined) data.team = input.teamId ? { connect: { id: input.teamId } } : { disconnect: true };
     if (input.active !== undefined) data.active = input.active;
     if (input.locale) data.locale = input.locale;

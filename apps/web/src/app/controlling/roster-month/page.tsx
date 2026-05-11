@@ -25,7 +25,7 @@ type RosterMonthPayload = {
 
 export default function RosterMonthPage() {
   const { token, loading } = useRequireAuth({
-    roles: ["CONTROLLING", "ADMIN"],
+    roles: ["CONTROLLING", "ADMIN", "SCHICHTPLANUNG"],
     anyViews: ["controlling_roster_month"],
   });
   const [projects, setProjects] = useState<Project[]>([]);
@@ -79,6 +79,7 @@ export default function RosterMonthPage() {
         <p>
           Gesamtmonat je Projekt: alle Teams mit allen Agenten. Pro Tag ein Kästchen: <strong>grün</strong> = Anwesenheit (A),{" "}
           <strong>grau</strong> = keine Daten, <strong>gelb</strong> = Slots ohne A, <strong>Rand rot</strong> = Abweichungen Roh/Control.
+          Zelle anklicken öffnet die <strong>Tagesmatrix</strong> zum Bearbeiten.
         </p>
       </div>
 
@@ -150,9 +151,12 @@ export default function RosterMonthPage() {
                           cls += " roster-month-disagree";
                         }
                         const title = `${d.date}\nSlots: ${d.cellCount}\nA (übereinstimmend): ${d.aAgreedSlots}\nAbweichungen: ${d.disagreedSlots}`;
+                        const href = `/controlling/roster-day?projectId=${encodeURIComponent(data.projectId)}&date=${encodeURIComponent(d.date)}`;
                         return (
-                          <td key={d.date} className={cls} title={title}>
-                            {d.worked ? "A" : d.present ? "·" : ""}
+                          <td key={d.date} className="roster-month-cell-wrap p-0">
+                            <a href={href} className={cls} title={`${title}\n→ Tagesmatrix`}>
+                              {d.worked ? "A" : d.present ? "·" : ""}
+                            </a>
                           </td>
                         );
                       })}

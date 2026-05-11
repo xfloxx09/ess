@@ -9,12 +9,14 @@ import {
   shiftplanMonthConfigDeleteSchema,
   shiftplanDayOverrideDeleteSchema,
   shiftplanTypeBlockDeleteSchema,
+  projectShiftplanPlannerUpsertSchema,
   type ShiftplanBookingTypeBlockCreateDto,
   type ShiftplanDayOverrideDeleteDto,
   type ShiftplanDayOverrideUpsertDto,
   type ShiftplanMonthConfigDeleteDto,
   type ShiftplanMonthConfigUpsertDto,
   type ShiftplanTypeBlockDeleteDto,
+  type ProjectShiftplanPlannerUpsertDto,
 } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import type { RequestUser } from "../../common/authz.types";
@@ -88,6 +90,13 @@ export class ConfigController {
     await this.shiftplanRules.deleteBookingTypeBlock(body.id, body.projectId);
     await this.audit.log(req.user.id, "DELETE", "config.shiftplan-type-block", body.id, body);
     return { ok: true };
+  }
+
+  @Post("project-shiftplan-planner")
+  async projectShiftplanPlanner(@Req() req: { user: RequestUser }, @Body(Body$(projectShiftplanPlannerUpsertSchema)) body: ProjectShiftplanPlannerUpsertDto) {
+    const saved = await this.shiftplanRules.upsertProjectPlannerSettings(body);
+    await this.audit.log(req.user.id, "UPSERT", "config.project-shiftplan-planner", saved.id, body);
+    return saved;
   }
 
   @Post("project")

@@ -42,6 +42,8 @@ model User {
   fullName       String
   role           UserRole
   hourlyRateEuro Float      @default(0)
+  /// Full-time equivalent for shift planning (1.0 = full day template).
+  fte            Float      @default(1)
   active         Boolean    @default(true)
   locale         String     @default("de")
   teamId         String?
@@ -147,6 +149,10 @@ model Project {
   active      Boolean    @default(true)
   abteilungId String
   abteilung   Abteilung  @relation(fields: [abteilungId], references: [id], onDelete: Restrict)
+  /// Target paid work minutes for FTE 1.0 when filling the roster (default 8h).
+  shiftplanTargetDayMinutes Int @default(480)
+  /// JSON: [{ "workMinutes": 120, "pauseMinutes": 15 }, …] cycle for auto-pauses between A-blocks.
+  shiftplanPausePatternJson Json?
   teams       Team[]
   premiums    ProductPremium[]
   salesEntries SalesEntry[]

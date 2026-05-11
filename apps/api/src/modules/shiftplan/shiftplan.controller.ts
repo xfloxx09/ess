@@ -1,6 +1,12 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { AppViewKey, UserRole } from "@ess/shared";
-import { shiftCellBulkUpsertSchema, shiftCellUpsertSchema } from "@ess/shared";
+import {
+  shiftCellBulkClearSchema,
+  shiftCellBulkUpsertSchema,
+  shiftCellUpsertSchema,
+  shiftplanCopyDaySchema,
+  shiftplanCopyMonthSchema,
+} from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import type { RequestUser } from "../../common/authz.types";
 import { AuditService } from "../audit/audit.service";
@@ -52,6 +58,34 @@ export class ShiftplanController {
     const cells = await this.shiftplan.bulkUpsert(body, req.user);
     await this.audit.log(req.user.id, "UPSERT", "shiftplan.bulk", null, { count: cells.length, date: body.date, agentId: body.agentId });
     return cells;
+  }
+
+  @Post("bulk-clear")
+  @Access(SHIFTPLAN_CTRL)
+  async bulkClear(
+    @Req() req: { user: RequestUser },
+    @Body(Body$(shiftCellBulkClearSchema))
+    body: { agentId: string; date: string; slotIndices: number[] },
+  ) {
+    const result = await this.shiftplan.bulkClearSlots(body, req.user);
+    await this.audit.log(req.user.id, "DELETE", "shiftplan.bulk-clear", null, { ...body, cleared: result.cleared });
+    return result;
+  }
+
+  @Post("copy-day")
+  @Access(SHIFTPLAN_CTRL)
+  async copyDay(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanCopyDaySchema)) body: { projectId: string; fromDate: string; toDate: string }) {
+    const result = await this.shiftplan.copyProjectDay(body.projectId, body.fromDate, body.toDate, req.user);
+    await this.audit.log(req.user.id, "CREATE", "shiftplan.copy-day", null, { ...body, ...result });
+    return result;
+  }
+
+  @Post("copy-month")
+  @Access(SHIFTPLAN_CTRL)
+  async copyMonth(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanCopyMonthSchema)) body: { projectId: string; fromMonth: string; toMonth: string }) {
+    const result = await this.shiftplan.copyProjectMonth(body.projectId, body.fromMonth, body.toMonth, req.user);
+    await this.audit.log(req.user.id, "CREATE", "shiftplan.copy-month", null, { ...body, ...result });
+    return result;
   }
 
   @Get("codes")

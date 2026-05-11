@@ -13,8 +13,10 @@ type SlotCell = {
   agreed: boolean;
   version: number | null;
 };
-type AgentRow = { agentId: string; fullName: string; email: string; slots: SlotCell[] };
+type AgentRow = { agentId: string; fullName: string; email: string; fte: number; slots: SlotCell[] };
 type TeamBlock = { teamId: string; teamName: string; agents: AgentRow[] };
+
+type PauseSeg = { workMinutes: number; pauseMinutes: number };
 
 type RosterProjectPayload = {
   projectId: string;
@@ -22,6 +24,7 @@ type RosterProjectPayload = {
   date: string;
   quarterHourCodes: CodeDef[];
   teams: TeamBlock[];
+  planner: { targetDayMinutes: number; pausePattern: PauseSeg[] };
 };
 
 type SavedCell = {
@@ -40,14 +43,18 @@ function slotStartLabel(slot: number): string {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
-type Tool = { kind: "code"; code: string } | { kind: "mirror-raw" };
+type Tool = { kind: "code"; code: string } | { kind: "mirror-raw" } | { kind: "erase" };
+
+type PendingOp =
+  | { kind: "set"; controllerCode: string; rawCode: string; expectedVersion?: number }
+  | { kind: "clear" };
 
 function immutPatchSlot(
   payload: RosterProjectPayload,
   agentId: string,
   slotIndex: number,
-  controllerCode: string,
-  rawCode: string,
+  controllerCode: string | null,
+  rawCode: string | null,
 ): RosterProjectPayload {
   return {
     ...payload,
@@ -64,7 +71,8 @@ function immutPatchSlot(
                       ...s,
                       controllerCode,
                       rawCode,
-                      agreed: controllerCode === rawCode,
+                      agreed: !!(controllerCode && rawCode && controllerCode === rawCode),
+                      version: controllerCode && rawCode ? s.version : null,
                     }
                   : s,
               ),
@@ -74,9 +82,55 @@ function immutPatchSlot(
   };
 }
 
+function timeToSlotIndex(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || min % 15 !== 0 || h < 0 || h > 23) return null;
+  const idx = h * 4 + min / 15;
+  return idx >= 0 && idx < 96 ? idx : null;
+}
+
+function buildFteSlots(params: { fte: number; targetDayMinutes: number; pausePattern: PauseSeg[]; startSlot: number }): { slotIndex: number; code: "A" | "P" }[] {
+  const workBudget = Math.max(0, Math.round(params.targetDayMinutes * params.fte));
+  const pattern =
+    params.pausePattern.length > 0
+      ? params.pausePattern
+      : [
+          { workMinutes: 120, pauseMinutes: 15 },
+          { workMinutes: 120, pauseMinutes: 30 },
+          { workMinutes: 120, pauseMinutes: 15 },
+        ];
+  let remainingWork = workBudget;
+  let cursor = params.startSlot;
+  const out: { slotIndex: number; code: "A" | "P" }[] = [];
+  let pi = 0;
+  while (remainingWork >= 15 && cursor < 96) {
+    const seg = pattern[pi % pattern.length]!;
+    const maxWorkSlots = Math.floor(seg.workMinutes / 15);
+    const capSlots = Math.min(maxWorkSlots, Math.floor(remainingWork / 15), 96 - cursor);
+    for (let k = 0; k < capSlots; k++) {
+      out.push({ slotIndex: cursor, code: "A" });
+      cursor += 1;
+      remainingWork -= 15;
+    }
+    const completedFullWork = capSlots === maxWorkSlots && maxWorkSlots > 0;
+    if (remainingWork < 15 || cursor >= 96) break;
+    if (!completedFullWork) break;
+    const pauseSlots = Math.floor(seg.pauseMinutes / 15);
+    for (let k = 0; k < pauseSlots && cursor < 96; k++) {
+      out.push({ slotIndex: cursor, code: "P" });
+      cursor += 1;
+    }
+    pi += 1;
+  }
+  return out;
+}
+
 export default function RosterDayPage() {
   const { token, loading } = useRequireAuth({
-    roles: ["CONTROLLING", "ADMIN"],
+    roles: ["CONTROLLING", "ADMIN", "SCHICHTPLANUNG"],
     anyViews: ["controlling_roster_day"],
   });
   const [projects, setProjects] = useState<Project[]>([]);
@@ -87,12 +141,28 @@ export default function RosterDayPage() {
   const [saving, setSaving] = useState(false);
   const [activeTool, setActiveTool] = useState<Tool>({ kind: "code", code: "A" });
   const [preserveRaw, setPreserveRaw] = useState(true);
+  const [copyFromDate, setCopyFromDate] = useState("");
+  const [copyFromMonth, setCopyFromMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [copyToMonth, setCopyToMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [fteStart, setFteStart] = useState("08:00");
+  const [fteAgentId, setFteAgentId] = useState<string>("");
   const dragRef = useRef(false);
-  const pendingRef = useRef<Map<string, Map<number, { controllerCode: string; rawCode: string; expectedVersion?: number }>>>(
-    new Map(),
-  );
+  const pendingRef = useRef<Map<string, Map<number, PendingOp>>>(new Map());
   const dataRef = useRef<RosterProjectPayload | null>(null);
   dataRef.current = data;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    const d = q.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      setDate(d);
+    }
+    const p = q.get("projectId");
+    if (p) {
+      setProjectId(p);
+    }
+  }, []);
 
   const codeColors = useMemo(() => {
     const map = new Map<string, string>();
@@ -140,7 +210,7 @@ export default function RosterDayPage() {
       return;
     }
     setActiveTool((t) => {
-      if (t.kind === "mirror-raw") {
+      if (t.kind === "mirror-raw" || t.kind === "erase") {
         return t;
       }
       if (data.quarterHourCodes.some((c) => c.code === t.code)) {
@@ -149,6 +219,19 @@ export default function RosterDayPage() {
       return { kind: "code", code: data.quarterHourCodes[0].code };
     });
   }, [data]);
+
+  useEffect(() => {
+    if (!data) return;
+    const flat: { id: string; name: string }[] = [];
+    for (const t of data.teams) {
+      for (const a of t.agents) {
+        flat.push({ id: a.agentId, name: a.fullName });
+      }
+    }
+    if (flat.length && fteAgentId !== "" && !flat.some((x) => x.id === fteAgentId)) {
+      setFteAgentId(flat[0]!.id);
+    }
+  }, [data, fteAgentId]);
 
   const loadProjectDay = useCallback(async () => {
     if (!token || !projectId) {
@@ -173,6 +256,110 @@ export default function RosterDayPage() {
     }
   }, [token, projectId, date]);
 
+  useEffect(() => {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    setCopyFromDate(d.toISOString().slice(0, 10));
+  }, [date]);
+
+  const agentsFlat = useMemo(() => {
+    if (!data) return [];
+    const out: { agentId: string; fullName: string; teamName: string; fte: number }[] = [];
+    for (const t of data.teams) {
+      for (const a of t.agents) {
+        out.push({ agentId: a.agentId, fullName: a.fullName, teamName: t.teamName, fte: a.fte });
+      }
+    }
+    return out;
+  }, [data]);
+
+  const runCopyDay = useCallback(async () => {
+    if (!token || !data || !copyFromDate || copyFromDate === data.date) {
+      setStatus("Quell-Datum wählen (und vom Ziel unterscheiden).");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/shiftplan/copy-day", {
+        method: "POST",
+        body: JSON.stringify({ projectId: data.projectId, fromDate: copyFromDate, toDate: data.date }),
+        token,
+      });
+      setStatus("Tag kopiert.");
+      await loadProjectDay();
+    } catch (e) {
+      setStatus(toMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [token, data, copyFromDate, loadProjectDay]);
+
+  const runCopyMonth = useCallback(async () => {
+    if (!token || !data || !copyFromMonth || !copyToMonth || copyFromMonth === copyToMonth) {
+      setStatus("Von-Monat und Ziel-Monat wählen (unterschiedlich).");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/shiftplan/copy-month", {
+        method: "POST",
+        body: JSON.stringify({ projectId: data.projectId, fromMonth: copyFromMonth, toMonth: copyToMonth }),
+        token,
+      });
+      setStatus("Monatsplan kopiert (gleicher Kalendertag → Zielmonat, bis kürzerer Monat).");
+      await loadProjectDay();
+    } catch (e) {
+      setStatus(toMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [token, data, copyFromMonth, copyToMonth, loadProjectDay]);
+
+  const runFteFill = useCallback(async () => {
+    if (!token || !data) return;
+    const start = timeToSlotIndex(fteStart);
+    if (start === null) {
+      setStatus("Startzeit als HH:MM in 15-Minuten-Schritten (z. B. 08:00).");
+      return;
+    }
+    const targets = fteAgentId ? agentsFlat.filter((a) => a.agentId === fteAgentId) : agentsFlat;
+    if (targets.length === 0) return;
+    setSaving(true);
+    try {
+      for (const ag of targets) {
+        const built = buildFteSlots({
+          fte: ag.fte,
+          targetDayMinutes: data.planner.targetDayMinutes,
+          pausePattern: data.planner.pausePattern,
+          startSlot: start,
+        });
+        if (built.length === 0) continue;
+        const from = start;
+        const to = built[built.length - 1]!.slotIndex;
+        const clearIdx: number[] = [];
+        for (let s = from; s <= to; s++) clearIdx.push(s);
+        await api("/shiftplan/bulk-clear", {
+          method: "POST",
+          body: JSON.stringify({ agentId: ag.agentId, date: data.date, slotIndices: clearIdx }),
+          token,
+        });
+        const slots = built.map((b) => ({ slotIndex: b.slotIndex, controllerCode: b.code, rawCode: b.code }));
+        await api("/shiftplan/bulk", {
+          method: "POST",
+          body: JSON.stringify({ agentId: ag.agentId, date: data.date, slots }),
+          token,
+        });
+      }
+      setStatus("FTE-Schicht eingetragen.");
+      await loadProjectDay();
+    } catch (e) {
+      setStatus(toMessage(e));
+      await loadProjectDay();
+    } finally {
+      setSaving(false);
+    }
+  }, [token, data, fteStart, fteAgentId, agentsFlat, loadProjectDay]);
+
   const computePaint = useCallback(
     (slot: SlotCell): { controllerCode: string; rawCode: string; expectedVersion?: number } | null => {
       if (activeTool.kind === "mirror-raw") {
@@ -181,6 +368,9 @@ export default function RosterDayPage() {
           return null;
         }
         return { controllerCode: raw, rawCode: raw, expectedVersion: slot.version ?? undefined };
+      }
+      if (activeTool.kind === "erase") {
+        return null;
       }
       const code = activeTool.code;
       const raw = preserveRaw ? (slot.rawCode ?? code) : code;
@@ -195,6 +385,17 @@ export default function RosterDayPage() {
       if (!current) {
         return;
       }
+      if (activeTool.kind === "erase") {
+        if (!slot.controllerCode && !slot.rawCode) {
+          return;
+        }
+        setData((prev) => (prev ? immutPatchSlot(prev, agentId, slot.slotIndex, null, null) : prev));
+        if (!pendingRef.current.has(agentId)) {
+          pendingRef.current.set(agentId, new Map());
+        }
+        pendingRef.current.get(agentId)!.set(slot.slotIndex, { kind: "clear" });
+        return;
+      }
       const paint = computePaint(slot);
       if (!paint) {
         return;
@@ -203,9 +404,9 @@ export default function RosterDayPage() {
       if (!pendingRef.current.has(agentId)) {
         pendingRef.current.set(agentId, new Map());
       }
-      pendingRef.current.get(agentId)!.set(slot.slotIndex, paint);
+      pendingRef.current.get(agentId)!.set(slot.slotIndex, { kind: "set", ...paint });
     },
-    [computePaint],
+    [activeTool, computePaint],
   );
 
   const flushPending = useCallback(async () => {
@@ -226,22 +427,40 @@ export default function RosterDayPage() {
         if (slotMap.size === 0) {
           continue;
         }
-        const slots = [...slotMap.entries()]
-          .sort((a, b) => a[0] - b[0])
-          .map(([slotIndex, p]) => ({
-            slotIndex,
-            controllerCode: p.controllerCode,
-            rawCode: p.rawCode,
-            expectedVersion: p.expectedVersion,
-          }));
-        await api<SavedCell[]>(
-          "/shiftplan/bulk",
-          {
-            method: "POST",
-            body: JSON.stringify({ agentId, date: snapshot.date, slots }),
-          },
-          tokenLocal,
-        );
+        const clears: number[] = [];
+        const sets: Array<{ slotIndex: number; controllerCode: string; rawCode: string; expectedVersion?: number }> = [];
+        for (const [slotIndex, op] of [...slotMap.entries()].sort((a, b) => a[0] - b[0])) {
+          if (op.kind === "clear") {
+            clears.push(slotIndex);
+          } else {
+            sets.push({
+              slotIndex,
+              controllerCode: op.controllerCode,
+              rawCode: op.rawCode,
+              expectedVersion: op.expectedVersion,
+            });
+          }
+        }
+        if (clears.length > 0) {
+          await api<{ cleared: number }>(
+            "/shiftplan/bulk-clear",
+            {
+              method: "POST",
+              body: JSON.stringify({ agentId, date: snapshot.date, slotIndices: clears }),
+            },
+            tokenLocal,
+          );
+        }
+        if (sets.length > 0) {
+          await api<SavedCell[]>(
+            "/shiftplan/bulk",
+            {
+              method: "POST",
+              body: JSON.stringify({ agentId, date: snapshot.date, slots: sets }),
+            },
+            tokenLocal,
+          );
+        }
       }
       setStatus("Änderungen gespeichert.");
       const payload = await api<RosterProjectPayload>(
@@ -376,6 +595,71 @@ export default function RosterDayPage() {
               <span className="ctrl-code-chip__sym">↺</span>
               <span className="ctrl-code-chip__lbl">Roh = Ctrl</span>
             </button>
+            <button
+              type="button"
+              className={`ctrl-code-chip ctrl-code-chip--ghost${activeTool.kind === "erase" ? " ctrl-code-chip--active" : ""}`}
+              title="Zelle leeren (A und andere Codes entfernen)"
+              onClick={() => setActiveTool({ kind: "erase" })}
+            >
+              <span className="ctrl-code-chip__sym">⌫</span>
+              <span className="ctrl-code-chip__lbl">Leeren</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {data && (
+        <div className="ctrl-roster-tools panel">
+          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
+            <label className="ctrl-roster-field">
+              <span>Tag kopieren von</span>
+              <input type="date" value={copyFromDate} onChange={(e) => setCopyFromDate(e.target.value)} />
+            </label>
+            <button type="button" onClick={() => void runCopyDay()} disabled={saving}>
+              Tag übernehmen → {data.date}
+            </button>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Ersetzt den geladenen Tag im Projekt.
+            </span>
+          </div>
+          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginTop: "0.75rem" }}>
+            <label className="ctrl-roster-field">
+              <span>Monat kopieren von</span>
+              <input type="month" value={copyFromMonth} onChange={(e) => setCopyFromMonth(e.target.value)} />
+            </label>
+            <label className="ctrl-roster-field">
+              <span>nach</span>
+              <input type="month" value={copyToMonth} onChange={(e) => setCopyToMonth(e.target.value)} />
+            </label>
+            <button type="button" onClick={() => void runCopyMonth()} disabled={saving}>
+              Monat kopieren
+            </button>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              1.→1., 2.→2., … bis zum kürzeren Monat.
+            </span>
+          </div>
+          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginTop: "0.75rem" }}>
+            <label className="ctrl-roster-field">
+              <span>Start (FTE + Pausen)</span>
+              <input type="time" step={900} value={fteStart} onChange={(e) => setFteStart(e.target.value)} />
+            </label>
+            <label className="ctrl-roster-field">
+              <span>Agent</span>
+              <select value={fteAgentId} onChange={(e) => setFteAgentId(e.target.value)}>
+                <option value="">Alle Agenten</option>
+                {agentsFlat.map((a) => (
+                  <option key={a.agentId} value={a.agentId}>
+                    {a.teamName}: {a.fullName} (FTE {a.fte})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => void runFteFill()} disabled={saving}>
+              A + P nach FTE eintragen
+            </button>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Zielzeit {data.planner.targetDayMinutes} min × FTE; Pausen laut Admin (Projekt).
+            </span>
           </div>
         </div>
       )}
@@ -409,6 +693,9 @@ export default function RosterDayPage() {
                       <td className="roster-sticky-col roster-agent-cell">
                         <strong>{row.fullName}</strong>
                         <div className="roster-agent-email">{row.email}</div>
+                        <div className="muted" style={{ fontSize: "0.75rem" }}>
+                          FTE {row.fte}
+                        </div>
                       </td>
                       {row.slots.map((slot) => {
                         const bg = slot.controllerCode ? (codeColors.get(slot.controllerCode) ?? "#dfe6ee") : "#f4f6f9";

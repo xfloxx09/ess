@@ -35,6 +35,7 @@ export const userCreateSchema = z.object({
   role: z.enum(["AGENT", "CONTROLLING", "ADMIN", "SCHICHTPLANUNG"]),
   password: z.string().min(8).max(200),
   hourlyRateEuro: z.number().nonnegative().optional(),
+  fte: z.number().min(0.1).max(2).optional(),
   teamId: z.string().min(1).optional().nullable(),
   active: z.boolean().optional(),
   locale: z.string().min(2).max(8).optional(),
@@ -154,6 +155,36 @@ export const shiftCellBulkUpsertSchema = z.object({
     .min(1)
     .max(96),
 });
+
+export const shiftCellBulkClearSchema = z.object({
+  agentId: z.string().min(1),
+  date: dateString,
+  slotIndices: z.array(z.number().int().min(0).max(95)).min(1).max(96),
+});
+
+export const shiftplanCopyDaySchema = z.object({
+  projectId: z.string().min(1),
+  fromDate: dateString,
+  toDate: dateString,
+});
+
+export const shiftplanCopyMonthSchema = z.object({
+  projectId: z.string().min(1),
+  fromMonth: monthString,
+  toMonth: monthString,
+});
+
+export const pausePatternSegmentSchema = z.object({
+  workMinutes: z.number().int().min(15).max(720),
+  pauseMinutes: z.number().int().min(0).max(180),
+});
+
+export const projectShiftplanPlannerUpsertSchema = z.object({
+  projectId: z.string().min(1),
+  shiftplanTargetDayMinutes: z.number().int().min(120).max(840).optional(),
+  shiftplanPausePattern: z.array(pausePatternSegmentSchema).min(1).max(24).optional(),
+});
+export type ProjectShiftplanPlannerUpsertDto = z.infer<typeof projectShiftplanPlannerUpsertSchema>;
 
 export const antragCreateSchema = z.object({
   agentId: z.string().min(1),

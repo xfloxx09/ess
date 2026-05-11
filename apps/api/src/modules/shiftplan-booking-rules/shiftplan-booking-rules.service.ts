@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import type { ShiftplanMonthAgentVisibility } from "@prisma/client";
+import type { Prisma, ShiftplanMonthAgentVisibility } from "@prisma/client";
 import { PrismaService } from "../../common/prisma.service";
 
 @Injectable()
@@ -66,7 +66,7 @@ export class ShiftplanBookingRulesService {
   }
 
   async getRulesBundle(projectId: string, month: string) {
-    const [monthConfig, dayOverrides, typeBlocks, bookingTypes] = await Promise.all([
+    const [monthConfig, dayOverrides, typeBlocks, bookingTypes, projectProfile] = await Promise.all([
       this.prisma.projectShiftplanMonthConfig.findUnique({ where: { projectId_month: { projectId, month } } }),
       this.prisma.projectCalendarDayOverride.findMany({
         where: { projectId, date: { startsWith: month } },
@@ -81,8 +81,23 @@ export class ShiftplanBookingRulesService {
         orderBy: [{ date: "asc" }, { month: "asc" }],
       }),
       this.prisma.bookingType.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
+      this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { shiftplanTargetDayMinutes: true, shiftplanPausePatternJson: true },
+      }),
     ]);
-    return { monthConfig, dayOverrides, typeBlocks, bookingTypes };
+    return {
+      monthConfig,
+      dayOverrides,
+      typeBlocks,
+      bookingTypes,
+      planner: projectProfile
+        ? {
+            shiftplanTargetDayMinutes: projectProfile.shiftplanTargetDayMinutes,
+            shiftplanPausePatternJson: projectProfile.shiftplanPausePatternJson,
+          }
+        : { shiftplanTargetDayMinutes: 480, shiftplanPausePatternJson: null },
+    };
   }
 
   async upsertMonthConfig(input: {
@@ -143,6 +158,24 @@ export class ShiftplanBookingRulesService {
 
   async deleteMonthConfig(projectId: string, month: string) {
     await this.prisma.projectShiftplanMonthConfig.deleteMany({ where: { projectId, month } });
+  }
+
+  async upsertProjectPlannerSettings(input: {
+    projectId: string;
+    shiftplanTargetDayMinutes?: number;
+    shiftplanPausePattern?: Array<{ workMinutes: number; pauseMinutes: number }>;
+  }) {
+    const data: Prisma.ProjectUpdateInput = {};
+    if (input.shiftplanTargetDayMinutes !== undefined) {
+      data.shiftplanTargetDayMinutes = input.shiftplanTargetDayMinutes;
+    }
+    if (input.shiftplanPausePattern !== undefined) {
+      data.shiftplanPausePatternJson = input.shiftplanPausePattern;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException("Keine Felder zum Speichern.");
+    }
+    return this.prisma.project.update({ where: { id: input.projectId }, data });
   }
 
   /** Resolved flags for agent calendar UI (month scope). */

@@ -351,6 +351,24 @@
   .roster-slot-head {
     @apply min-w-[24px] border-b border-border bg-muted/50 px-1 py-2 text-center font-normal text-muted-foreground;
   }
+  .roster-month-cell-wrap {
+    @apply p-0 align-middle;
+  }
+  .roster-month-cell {
+    @apply flex min-h-7 min-w-6 items-center justify-center text-center text-xs no-underline text-inherit;
+  }
+  .roster-month-empty {
+    @apply bg-muted/15 text-muted-foreground;
+  }
+  .roster-month-work {
+    @apply bg-emerald-500/20 font-medium text-foreground;
+  }
+  .roster-month-partial {
+    @apply bg-amber-500/20 text-foreground;
+  }
+  .roster-month-disagree {
+    @apply ring-2 ring-destructive/60 ring-inset;
+  }
   .roster-agent-email {
     @apply text-[11px] font-normal text-muted-foreground;
   }

@@ -99,7 +99,10 @@ export class ShiftplanService {
 
   async rosterDayProject(projectId: string, date: string, user?: RequestUser) {
     await this.assertProjectVisible(user, projectId);
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { name: true, shiftplanTargetDayMinutes: true, shiftplanPausePatternJson: true },
+    });
     if (!project) throw new NotFoundException("Project not found");
     const codes = await this.listCodes();
     const teams = await this.prisma.team.findMany({
@@ -108,7 +111,7 @@ export class ShiftplanService {
       include: {
         agents: {
           where: { role: "AGENT", active: true, deletedAt: null },
-          select: { id: true, fullName: true, email: true },
+          select: { id: true, fullName: true, email: true, fte: true },
           orderBy: { fullName: "asc" },
         },
       },
@@ -122,6 +125,7 @@ export class ShiftplanService {
             agentId: agent.id,
             fullName: agent.fullName,
             email: agent.email,
+            fte: agent.fte,
             slots: await this.buildSlotsForAgent(agent.id, date),
           })),
         ),
@@ -133,6 +137,10 @@ export class ShiftplanService {
       date,
       quarterHourCodes: codes,
       teams: teamPayload,
+      planner: {
+        targetDayMinutes: project.shiftplanTargetDayMinutes,
+        pausePattern: parsePausePattern(project.shiftplanPausePatternJson),
+      },
     };
   }
 
@@ -261,6 +269,85 @@ export class ShiftplanService {
       );
     }
     return out;
+  }
+
+  async bulkClearSlots(input: { agentId: string; date: string; slotIndices: number[] }, user?: RequestUser) {
+    await this.assertControllerMayEditAgent(user, input.agentId);
+    const unique = [...new Set(input.slotIndices)].sort((a, b) => a - b);
+    let cleared = 0;
+    for (const slotIndex of unique) {
+      const existing = await this.prisma.shiftplanCell.findUnique({
+        where: { agentId_date_slotIndex: { agentId: input.agentId, date: input.date, slotIndex } },
+      });
+      if (!existing) continue;
+      await this.prisma.shiftplanHistory.create({
+        data: {
+          cellId: existing.id,
+          agentId: existing.agentId,
+          date: existing.date,
+          slotIndex: existing.slotIndex,
+          action: "DELETE",
+          version: existing.version,
+          payload: { controllerCode: existing.controllerCode, rawCode: existing.rawCode },
+        },
+      });
+      await this.prisma.shiftplanCell.delete({ where: { id: existing.id } });
+      cleared += 1;
+      await this.emitRosterCellDeleted(input.agentId, input.date, slotIndex);
+    }
+    return { cleared };
+  }
+
+  async copyProjectDay(projectId: string, fromDate: string, toDate: string, user?: RequestUser) {
+    if (fromDate === toDate) {
+      throw new BadRequestException("fromDate and toDate must differ");
+    }
+    await this.assertProjectVisible(user, projectId);
+    const agentIds = await this.listProjectAgentIds(projectId);
+    if (agentIds.length === 0) {
+      return { agentsTouched: 0, slotsWritten: 0 };
+    }
+    await this.prisma.shiftplanCell.deleteMany({ where: { agentId: { in: agentIds }, date: toDate } });
+    const sourceCells = await this.prisma.shiftplanCell.findMany({
+      where: { agentId: { in: agentIds }, date: fromDate },
+      orderBy: [{ agentId: "asc" }, { slotIndex: "asc" }],
+    });
+    let slotsWritten = 0;
+    for (const agentId of agentIds) {
+      const rows = sourceCells.filter((c) => c.agentId === agentId);
+      if (rows.length === 0) continue;
+      await this.bulkUpsert(
+        {
+          agentId,
+          date: toDate,
+          slots: rows.map((c) => ({
+            slotIndex: c.slotIndex,
+            controllerCode: c.controllerCode,
+            rawCode: c.rawCode,
+          })),
+        },
+        user,
+      );
+      slotsWritten += rows.length;
+    }
+    const agentsTouched = new Set(sourceCells.map((c) => c.agentId)).size;
+    return { agentsTouched, slotsWritten };
+  }
+
+  async copyProjectMonth(projectId: string, fromMonth: string, toMonth: string, user?: RequestUser) {
+    if (fromMonth === toMonth) {
+      throw new BadRequestException("fromMonth and toMonth must differ");
+    }
+    await this.assertProjectVisible(user, projectId);
+    const fromDates = datesForMonth(fromMonth);
+    const toDates = datesForMonth(toMonth);
+    const n = Math.min(fromDates.length, toDates.length);
+    let daysCopied = 0;
+    for (let i = 0; i < n; i++) {
+      const r = await this.copyProjectDay(projectId, fromDates[i], toDates[i], user);
+      if (r.slotsWritten > 0) daysCopied += 1;
+    }
+    return { dayPairs: n, daysWithData: daysCopied };
   }
 
   async assertMayViewAgentMonth(user: RequestUser, targetAgentId: string) {
@@ -435,6 +522,25 @@ export class ShiftplanService {
     return this.prisma.shiftplanHistory.findMany({ where, orderBy: { createdAt: "desc" }, take: 500 });
   }
 
+  private async emitRosterCellDeleted(agentId: string, date: string, slotIndex: number) {
+    const agent = await this.prisma.user.findUnique({ where: { id: agentId }, select: { teamId: true } });
+    if (!agent?.teamId) return;
+    const team = await this.prisma.team.findUnique({ where: { id: agent.teamId } });
+    if (!team) return;
+    this.realtime.emit(
+      { type: "roster.cellDeleted", projectId: team.projectId, teamId: team.id, agentId, date, slotIndex },
+      [`project:${team.projectId}`, `team:${team.id}`],
+    );
+  }
+
+  private async listProjectAgentIds(projectId: string): Promise<string[]> {
+    const agents = await this.prisma.user.findMany({
+      where: { role: "AGENT", active: true, deletedAt: null, team: { projectId, active: true } },
+      select: { id: true },
+    });
+    return agents.map((a) => a.id);
+  }
+
   // ----------------------- helpers -----------------------
 
   private async buildSlotsForAgent(agentId: string, date: string) {
@@ -498,6 +604,29 @@ export class ShiftplanService {
       throw new ForbiddenException("Agent is outside your permitted projects");
     }
   }
+}
+
+function parsePausePattern(raw: unknown): Array<{ workMinutes: number; pauseMinutes: number }> {
+  const fallback = [
+    { workMinutes: 120, pauseMinutes: 15 },
+    { workMinutes: 120, pauseMinutes: 30 },
+    { workMinutes: 120, pauseMinutes: 15 },
+  ];
+  if (!raw || !Array.isArray(raw)) return fallback;
+  const out: Array<{ workMinutes: number; pauseMinutes: number }> = [];
+  for (const row of raw) {
+    if (typeof row === "object" && row !== null && "workMinutes" in row && "pauseMinutes" in row) {
+      const w = Number((row as { workMinutes: unknown }).workMinutes);
+      const p = Number((row as { pauseMinutes: unknown }).pauseMinutes);
+      if (Number.isFinite(w) && Number.isFinite(p) && w >= 15) {
+        out.push({
+          workMinutes: Math.min(720, Math.max(15, Math.floor(w))),
+          pauseMinutes: Math.min(180, Math.max(0, Math.floor(p))),
+        });
+      }
+    }
+  }
+  return out.length > 0 ? out : fallback;
 }
 
 function datesForMonth(month: string): string[] {

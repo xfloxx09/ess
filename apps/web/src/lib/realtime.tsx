@@ -28,6 +28,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     socket.on("event", (event: RealtimeEvent) => {
       switch (event.type) {
         case "roster.cellChanged":
+        case "roster.cellDeleted":
           queryClient.invalidateQueries({ queryKey: ["roster", "day-project"] });
           queryClient.invalidateQueries({ queryKey: ["roster", "day"] });
           break;

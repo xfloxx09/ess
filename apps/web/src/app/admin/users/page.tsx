@@ -29,6 +29,7 @@ interface UserRow {
   teamId: string | null;
   team?: { id: string; name: string; projectId: string } | null;
   hourlyRateEuro: number;
+  fte: number;
   createdAt: string;
   lastLoginAt: string | null;
 }
@@ -212,6 +213,7 @@ function UserFormDialog({
     password: "",
     active: user?.active ?? true,
     hourlyRateEuro: user?.hourlyRateEuro ?? 12.5,
+    fte: user?.fte ?? 1,
   });
 
   const submit = useMutation({
@@ -223,6 +225,7 @@ function UserFormDialog({
         role: form.role,
         active: form.active,
         hourlyRateEuro: Number(form.hourlyRateEuro) || 0,
+        fte: Number(form.fte) > 0 ? Number(form.fte) : 1,
       };
       if (form.password) body.password = form.password;
       else if (!isEdit) throw new Error("Password required");
@@ -293,6 +296,17 @@ function UserFormDialog({
               step="0.01"
               value={form.hourlyRateEuro}
               onChange={(e) => setForm({ ...form, hourlyRateEuro: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>FTE (Schichtplanung, 1,0 = Vollzeit-Tag)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              min={0.1}
+              max={2}
+              value={form.fte}
+              onChange={(e) => setForm({ ...form, fte: Number(e.target.value) })}
             />
           </div>
           <DialogFooter>

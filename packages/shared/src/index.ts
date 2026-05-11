@@ -43,6 +43,7 @@ export interface ShiftBlockJson {
 
 export type RealtimeEvent =
   | { type: "roster.cellChanged"; projectId: string; teamId: string; agentId: string; date: string; slotIndex: number; controllerCode: string; rawCode: string; version: number }
+  | { type: "roster.cellDeleted"; projectId: string; teamId: string; agentId: string; date: string; slotIndex: number }
   | { type: "antrag.created"; antragId: string; agentId: string; date: string }
   | { type: "antrag.decided"; antragId: string; agentId: string; date: string; status: "APPROVED" | "REJECTED" }
   | { type: "notification.created"; userId: string; notificationId: string }

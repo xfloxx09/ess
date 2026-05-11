@@ -39,6 +39,10 @@ type RulesBundle = {
   dayOverrides: DayOv[];
   typeBlocks: TypeBlock[];
   bookingTypes: Array<{ id: string; label: string; code: string }>;
+  planner: {
+    shiftplanTargetDayMinutes: number;
+    shiftplanPausePatternJson: unknown;
+  };
 };
 
 export default function AdminShiftplanBookingPage() {
@@ -58,6 +62,19 @@ export default function AdminShiftplanBookingPage() {
 
   const [blockScope, setBlockScope] = useState<"month" | "day">("month");
   const [blockTypeId, setBlockTypeId] = useState("");
+
+  const [plannerMinutes, setPlannerMinutes] = useState(480);
+  const [plannerPatternJson, setPlannerPatternJson] = useState(
+    JSON.stringify(
+      [
+        { workMinutes: 120, pauseMinutes: 15 },
+        { workMinutes: 120, pauseMinutes: 30 },
+        { workMinutes: 120, pauseMinutes: 15 },
+      ],
+      null,
+      2,
+    ),
+  );
 
   const bookingTypes = bundle?.bookingTypes ?? [];
 
@@ -86,6 +103,34 @@ export default function AdminShiftplanBookingPage() {
       } else {
         setMonthOpen(true);
         setVisibility("PUBLISHED");
+      }
+      if (b.planner) {
+        setPlannerMinutes(b.planner.shiftplanTargetDayMinutes);
+        setPlannerPatternJson(
+          JSON.stringify(
+            b.planner.shiftplanPausePatternJson ??
+              [
+                { workMinutes: 120, pauseMinutes: 15 },
+                { workMinutes: 120, pauseMinutes: 30 },
+                { workMinutes: 120, pauseMinutes: 15 },
+              ],
+            null,
+            2,
+          ),
+        );
+      } else {
+        setPlannerMinutes(480);
+        setPlannerPatternJson(
+          JSON.stringify(
+            [
+              { workMinutes: 120, pauseMinutes: 15 },
+              { workMinutes: 120, pauseMinutes: 30 },
+              { workMinutes: 120, pauseMinutes: 15 },
+            ],
+            null,
+            2,
+          ),
+        );
       }
       setStatus(t("adminShiftplan.rulesLoaded"));
     } catch (e) {
@@ -165,6 +210,29 @@ export default function AdminShiftplanBookingPage() {
     try {
       await api("/config/shiftplan-type-block/delete", { method: "POST", token, body: { id, projectId } });
       setStatus(t("adminShiftplan.blockRemoved"));
+      await loadRules();
+    } catch (e) {
+      setStatus(toMessage(e));
+    }
+  }
+
+  async function savePlannerSettings() {
+    if (!token || !projectId) return;
+    let pattern: Array<{ workMinutes: number; pauseMinutes: number }>;
+    try {
+      pattern = JSON.parse(plannerPatternJson) as Array<{ workMinutes: number; pauseMinutes: number }>;
+      if (!Array.isArray(pattern) || pattern.length === 0) throw new Error("empty");
+    } catch {
+      setStatus("Pausen-Muster: gültiges JSON-Array erforderlich.");
+      return;
+    }
+    try {
+      await api("/config/project-shiftplan-planner", {
+        method: "POST",
+        token,
+        body: { projectId, shiftplanTargetDayMinutes: plannerMinutes, shiftplanPausePattern: pattern },
+      });
+      setStatus("Schichtplaner-Einstellungen gespeichert.");
       await loadRules();
     } catch (e) {
       setStatus(toMessage(e));
@@ -253,6 +321,32 @@ export default function AdminShiftplanBookingPage() {
               {t("adminShiftplan.activeFor")}: {monthLabel}
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Schichtplaner: Zielzeit &amp; Pausen</CardTitle>
+          <CardDescription>
+            Gilt pro Projekt für die FTE-Füllung in der Tagesmatrix. Arbeit in Minuten, danach Pause in Minuten — zyklisch wiederholt.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 max-w-3xl">
+          <div className="space-y-2">
+            <Label>Ziel-Arbeitszeit bei FTE 1,0 (Minuten / Tag)</Label>
+            <Input type="number" min={120} max={840} value={plannerMinutes} onChange={(e) => setPlannerMinutes(Number(e.target.value) || 480)} className="w-40" />
+          </div>
+          <div className="space-y-2">
+            <Label>Pausen-Muster (JSON)</Label>
+            <textarea
+              className="w-full min-h-[140px] rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+              value={plannerPatternJson}
+              onChange={(e) => setPlannerPatternJson(e.target.value)}
+            />
+          </div>
+          <Button type="button" onClick={() => void savePlannerSettings()}>
+            {t("app.save")}
+          </Button>
         </CardContent>
       </Card>
 
