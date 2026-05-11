@@ -73,8 +73,21 @@ export async function api<T>(path: string, optsOrInit?: ApiOptions | RequestInit
     const o = (optsOrInit ?? {}) as ApiOptions;
     headers = (o.headers as Record<string, string>) ?? {};
     if (o.body !== undefined) {
-      body = JSON.stringify(o.body);
-      headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+      // Call sites often use `body: JSON.stringify(...)` together with `token`.
+      // ApiOptions is inferred whenever `token` is present, so we must not
+      // JSON.stringify an already-serialized string (that double-encodes the
+      // payload and breaks Nest/Zod body parsing on the server).
+      if (typeof o.body === "string") {
+        body = o.body;
+        if (body.length > 0) {
+          headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+        }
+      } else if (o.body instanceof FormData || o.body instanceof Blob) {
+        body = o.body;
+      } else {
+        body = JSON.stringify(o.body);
+        headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+      }
     }
     token = o.token;
     withCredentials = o.withCredentials ?? true;
