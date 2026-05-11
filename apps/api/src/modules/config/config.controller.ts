@@ -1,6 +1,21 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, BadRequestException, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { BookingCategory } from "@prisma/client";
-import { calendarPolicySchema, shiftRuleSchema } from "@ess/shared";
+import {
+  calendarPolicySchema,
+  shiftRuleSchema,
+  shiftplanMonthConfigUpsertSchema,
+  shiftplanDayOverrideUpsertSchema,
+  shiftplanBookingTypeBlockCreateSchema,
+  shiftplanMonthConfigDeleteSchema,
+  shiftplanDayOverrideDeleteSchema,
+  shiftplanTypeBlockDeleteSchema,
+  type ShiftplanBookingTypeBlockCreateDto,
+  type ShiftplanDayOverrideDeleteDto,
+  type ShiftplanDayOverrideUpsertDto,
+  type ShiftplanMonthConfigDeleteDto,
+  type ShiftplanMonthConfigUpsertDto,
+  type ShiftplanTypeBlockDeleteDto,
+} from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import type { RequestUser } from "../../common/authz.types";
 import { AuditService } from "../audit/audit.service";
@@ -8,6 +23,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { ConfigService } from "./config.service";
+import { ShiftplanBookingRulesService } from "../shiftplan-booking-rules/shiftplan-booking-rules.service";
 
 @Controller("config")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,11 +32,62 @@ export class ConfigController {
   constructor(
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly shiftplanRules: ShiftplanBookingRulesService,
   ) {}
 
   @Get("dashboard")
   list() {
     return this.config.dashboard();
+  }
+
+  @Get("shiftplan-booking-rules")
+  shiftplanBookingRules(@Query("projectId") projectId: string, @Query("month") month: string) {
+    if (!projectId || !month || !/^\d{4}-\d{2}$/.test(month)) {
+      throw new BadRequestException("projectId and month (YYYY-MM) required");
+    }
+    return this.shiftplanRules.getRulesBundle(projectId, month);
+  }
+
+  @Post("shiftplan-month-config")
+  async shiftplanMonthConfig(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanMonthConfigUpsertSchema)) body: ShiftplanMonthConfigUpsertDto) {
+    const saved = await this.shiftplanRules.upsertMonthConfig(body);
+    await this.audit.log(req.user.id, "UPSERT", "config.shiftplan-month-config", saved.id, saved);
+    return saved;
+  }
+
+  @Post("shiftplan-month-config/delete")
+  async shiftplanMonthConfigDelete(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanMonthConfigDeleteSchema)) body: ShiftplanMonthConfigDeleteDto) {
+    await this.shiftplanRules.deleteMonthConfig(body.projectId, body.month);
+    await this.audit.log(req.user.id, "DELETE", "config.shiftplan-month-config", null, body);
+    return { ok: true };
+  }
+
+  @Post("shiftplan-day-override")
+  async shiftplanDayOverride(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanDayOverrideUpsertSchema)) body: ShiftplanDayOverrideUpsertDto) {
+    const saved = await this.shiftplanRules.upsertDayOverride(body);
+    await this.audit.log(req.user.id, "UPSERT", "config.shiftplan-day-override", saved.id, saved);
+    return saved;
+  }
+
+  @Post("shiftplan-day-override/delete")
+  async shiftplanDayOverrideDelete(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanDayOverrideDeleteSchema)) body: ShiftplanDayOverrideDeleteDto) {
+    await this.shiftplanRules.deleteDayOverride(body.projectId, body.date);
+    await this.audit.log(req.user.id, "DELETE", "config.shiftplan-day-override", null, body);
+    return { ok: true };
+  }
+
+  @Post("shiftplan-type-block")
+  async shiftplanTypeBlock(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanBookingTypeBlockCreateSchema)) body: ShiftplanBookingTypeBlockCreateDto) {
+    const saved = await this.shiftplanRules.addBookingTypeBlock(body);
+    await this.audit.log(req.user.id, "CREATE", "config.shiftplan-type-block", saved.id, saved);
+    return saved;
+  }
+
+  @Post("shiftplan-type-block/delete")
+  async shiftplanTypeBlockDelete(@Req() req: { user: RequestUser }, @Body(Body$(shiftplanTypeBlockDeleteSchema)) body: ShiftplanTypeBlockDeleteDto) {
+    await this.shiftplanRules.deleteBookingTypeBlock(body.id, body.projectId);
+    await this.audit.log(req.user.id, "DELETE", "config.shiftplan-type-block", body.id, body);
+    return { ok: true };
   }
 
   @Post("project")

@@ -24,6 +24,8 @@ import {
   Upload,
   UserCheck,
   Users,
+  Wrench,
+  UserCog,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -96,8 +98,10 @@ const sections: NavSection[] = [
     items: [
       { href: "/admin/users", labelKey: "nav.adminUsers", icon: Users, viewKey: "admin_users" },
       { href: "/admin/org-access", labelKey: "nav.adminOrgAccess", icon: Network, viewKey: "admin_org_access" },
+      { href: "/admin/schichtplaner-access", labelKey: "nav.adminSchichtplanerAccess", icon: UserCog, viewKey: "admin_schichtplaner_access" },
       { href: "/admin/catalog", labelKey: "nav.adminCatalog", icon: Database, viewKey: "admin_catalog" },
       { href: "/admin/calendar-rules", labelKey: "nav.adminCalendarRules", icon: KeyRound, viewKey: "admin_calendar_rules" },
+      { href: "/admin/shiftplan-booking", labelKey: "nav.adminShiftplanBooking", icon: Wrench, viewKey: "admin_shiftplan_booking" },
       { href: "/admin/config", labelKey: "nav.adminConfig", icon: Sliders, viewKey: "admin_config" },
       { href: "/admin/audit", labelKey: "nav.adminAudit", icon: ScrollText, viewKey: "admin_audit" },
     ],

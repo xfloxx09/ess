@@ -7,5 +7,6 @@ import { AdminOrgAccessService } from "./admin-org-access.service";
   imports: [AuditModule],
   controllers: [AdminOrgAccessController],
   providers: [AdminOrgAccessService],
+  exports: [AdminOrgAccessService],
 })
 export class AdminOrgAccessModule {}

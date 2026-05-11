@@ -16,6 +16,7 @@ import { ReportsModule } from "./modules/reports/reports.module";
 import { SalesModule } from "./modules/sales/sales.module";
 import { ShiftplanModule } from "./modules/shiftplan/shiftplan.module";
 import { AdminOrgAccessModule } from "./modules/admin-org-access/admin-org-access.module";
+import { AdminSchichtplanerAccessModule } from "./modules/admin-schichtplaner-access/admin-schichtplaner-access.module";
 import { ControllingWorkflowModule } from "./modules/controlling-workflow/controlling-workflow.module";
 import { UsersModule } from "./modules/users/users.module";
 import { AgentWorkspaceModule } from "./modules/agent-workspace/agent-workspace.module";
@@ -31,6 +32,7 @@ import { AgentWorkspaceModule } from "./modules/agent-workspace/agent-workspace.
     AuthModule,
     UsersModule,
     AdminOrgAccessModule,
+    AdminSchichtplanerAccessModule,
     AntraegeModule,
     SalesModule,
     AgentWorkspaceModule,

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { calendarBatchBookingSchema, calendarBookRequestSchema } from "@ess/shared";
 import type { CalendarBatchBookingDto, CalendarBookRequestDto } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
@@ -35,13 +35,13 @@ export class CalendarController {
   }
 
   @Get("booking-types")
-  @Roles("AGENT", "ADMIN", "CONTROLLING")
+  @Roles("AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
   bookingTypes() {
     return this.calendar.listActiveBookingTypes();
   }
 
   @Get("policy")
-  @Roles("AGENT", "ADMIN", "CONTROLLING")
+  @Roles("AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
   policy() {
     return this.calendar.getPolicy();
   }
@@ -50,6 +50,15 @@ export class CalendarController {
   @Roles("AGENT")
   mine(@Req() req: { user: RequestUser }, @Query("month") month: string) {
     return this.calendar.listMine(req.user.id, month);
+  }
+
+  @Get("my-booking-rules")
+  @Roles("AGENT")
+  myBookingRules(@Req() req: { user: RequestUser }, @Query("month") month: string) {
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      throw new BadRequestException("month (YYYY-MM) required");
+    }
+    return this.calendar.myBookingMonthSummary(req.user.id, month);
   }
 
   @Delete("mine")

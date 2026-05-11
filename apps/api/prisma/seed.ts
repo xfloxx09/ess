@@ -77,6 +77,19 @@ async function main() {
     update: {},
   });
 
+  const schichtPlanUser = await prisma.user.upsert({
+    where: { email: "schichtplanung@ess.local" },
+    create: {
+      email: "schichtplanung@ess.local",
+      fullName: "Demo Schichtplanung",
+      role: "SCHICHTPLANUNG",
+      passwordHash,
+      hourlyRateEuro: 0,
+      locale: "de",
+    },
+    update: { role: "SCHICHTPLANUNG" },
+  });
+
   // ---------- Agents ----------
   const agent = await prisma.user.upsert({
     where: { email: "agent@ess.local" },
@@ -135,6 +148,30 @@ async function main() {
   await prisma.userAccessRole.upsert({
     where: { userId_accessRoleId: { userId: agent2.id, accessRoleId: roleSchichtplan.id } },
     create: { userId: agent2.id, accessRoleId: roleSchichtplan.id },
+    update: {},
+  });
+
+  const slugSpDemo = `schichtplaner-scope-${schichtPlanUser.id}`;
+  const roleSpDemo = await prisma.accessRole.upsert({
+    where: { slug: slugSpDemo },
+    create: {
+      slug: slugSpDemo,
+      name: `Schichtplanung · ${schichtPlanUser.fullName}`,
+      description: "Demo: Schichtplaner-Zugang (Admin-UI) — Projekt GK CM KMU",
+      views: {
+        createMany: {
+          data: [{ viewKey: "controlling_roster_day" }, { viewKey: "controlling_roster_month" }],
+        },
+      },
+      scopes: { create: { resourceType: "PROJECT", resourceId: projectGk.id } },
+    },
+    update: {
+      name: `Schichtplanung · ${schichtPlanUser.fullName}`,
+    },
+  });
+  await prisma.userAccessRole.upsert({
+    where: { userId_accessRoleId: { userId: schichtPlanUser.id, accessRoleId: roleSpDemo.id } },
+    create: { userId: schichtPlanUser.id, accessRoleId: roleSpDemo.id },
     update: {},
   });
 

@@ -1,10 +1,14 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import type { CalendarBatchBookingDto, CalendarBookingDto, ShiftBlock } from "@ess/shared";
 import { PrismaService } from "../../common/prisma.service";
+import { ShiftplanBookingRulesService } from "../shiftplan-booking-rules/shiftplan-booking-rules.service";
 
 @Injectable()
 export class CalendarService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly bookingRules: ShiftplanBookingRulesService,
+  ) {}
 
   listActiveBookingTypes() {
     return this.prisma.bookingType.findMany({ where: { active: true }, orderBy: { code: "asc" } });
@@ -20,7 +24,7 @@ export class CalendarService {
   }
 
   async book(agentId: string, dto: CalendarBookingDto, expectedVersion?: number) {
-    await this.validateBooking(dto);
+    await this.validateBooking(agentId, dto);
     const existing = await this.prisma.calendarBooking.findUnique({
       where: { agentId_date: { agentId, date: dto.date } },
     });
@@ -99,6 +103,10 @@ export class CalendarService {
     return { removed: 1 };
   }
 
+  myBookingMonthSummary(agentId: string, month: string) {
+    return this.bookingRules.getMyBookingMonthSummary(agentId, month);
+  }
+
   listHistory(agentId: string, month: string) {
     return this.prisma.calendarHistory.findMany({
       where: { agentId, date: { startsWith: month } },
@@ -107,7 +115,7 @@ export class CalendarService {
     });
   }
 
-  private async validateBooking(dto: CalendarBookingDto) {
+  private async validateBooking(agentId: string, dto: CalendarBookingDto) {
     const now = new Date();
     const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
@@ -115,6 +123,8 @@ export class CalendarService {
       where: { id: dto.bookingTypeId, active: true },
     });
     if (!bookingType) throw new BadRequestException("Booking type not allowed");
+
+    await this.bookingRules.assertCalendarBookingAllowed(agentId, dto.date, dto.bookingTypeId, bookingType.code);
 
     if (!bookingType.allowsSplitShift && dto.blocks.length > 1) {
       throw new BadRequestException("This booking type does not allow split shift blocks");

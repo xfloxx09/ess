@@ -110,6 +110,15 @@ export class UserAuthzService {
       }
     }
 
+    if (user.role === "SCHICHTPLANUNG") {
+      if (assignments.length === 0) {
+        allowedProjectIds = [];
+      } else if (allowedProjectIds === null) {
+        // Unscoped access roles would otherwise mean "all projects"; Schichtplanung must stay explicitly scoped.
+        allowedProjectIds = [];
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,

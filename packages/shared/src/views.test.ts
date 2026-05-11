@@ -6,6 +6,7 @@ describe("views", () => {
     const views = defaultVisibleViewsForRole("ADMIN");
     expect(views.length).toBeGreaterThanOrEqual(10);
     expect(views).toContain("admin_users");
+    expect(views).toContain("admin_schichtplaner_access");
     expect(views).toContain("dashboard_kpi");
   });
 
@@ -20,6 +21,14 @@ describe("views", () => {
   it("controlling sees controlling views", () => {
     const views = defaultVisibleViewsForRole("CONTROLLING");
     expect(views).toContain("controlling_review");
+    expect(views).not.toContain("admin_users");
+  });
+
+  it("schichtplanung sees roster views only", () => {
+    const views = defaultVisibleViewsForRole("SCHICHTPLANUNG");
+    expect(views).toContain("controlling_roster_day");
+    expect(views).toContain("controlling_roster_month");
+    expect(views).not.toContain("controlling_review");
     expect(views).not.toContain("admin_users");
   });
 

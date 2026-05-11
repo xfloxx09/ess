@@ -11,7 +11,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { ShiftplanService } from "./shiftplan.service";
 
 const SHIFTPLAN_CTRL: { anyRoles: UserRole[]; anyViews: AppViewKey[] } = {
-  anyRoles: ["ADMIN", "CONTROLLING"],
+  anyRoles: ["ADMIN", "CONTROLLING", "SCHICHTPLANUNG"],
   anyViews: ["controlling_roster_day", "controlling_roster_month"],
 };
 
@@ -55,7 +55,7 @@ export class ShiftplanController {
   }
 
   @Get("codes")
-  @Roles("ADMIN", "CONTROLLING", "AGENT")
+  @Roles("ADMIN", "CONTROLLING", "SCHICHTPLANUNG", "AGENT")
   codes() {
     return this.shiftplan.listCodes();
   }
@@ -114,18 +114,18 @@ export class ShiftplanController {
   }
 
   @Get("agent-month")
-  @Roles("AGENT", "ADMIN", "CONTROLLING")
+  @Roles("AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
   async agentMonth(@Req() req: { user: RequestUser }, @Query("month") month: string, @Query("agentId") agentId?: string) {
     const target = req.user.role === "AGENT" ? req.user.id : agentId ?? req.user.id;
     await this.shiftplan.assertMayViewAgentMonth(req.user, target);
-    return this.shiftplan.listAgentMonth(target, month);
+    return this.shiftplan.listAgentMonth(target, month, req.user);
   }
 
   @Get("agent-final-month")
-  @Roles("AGENT", "ADMIN", "CONTROLLING")
+  @Roles("AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
   async agentFinalMonth(@Req() req: { user: RequestUser }, @Query("month") month: string, @Query("agentId") agentId?: string) {
     const target = req.user.role === "AGENT" ? req.user.id : agentId ?? req.user.id;
     await this.shiftplan.assertMayViewAgentMonth(req.user, target);
-    return this.shiftplan.listAgentFinalMonth(target, month);
+    return this.shiftplan.listAgentFinalMonth(target, month, req.user);
   }
 }

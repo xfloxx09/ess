@@ -118,7 +118,15 @@ export default function AdminUsersPage() {
                     <TableCell className="font-medium">{user.fullName}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
-                      <Badge variant={user.role === "ADMIN" ? "default" : user.role === "CONTROLLING" ? "secondary" : "outline"}>
+                      <Badge
+                        variant={
+                          user.role === "ADMIN"
+                            ? "default"
+                            : user.role === "CONTROLLING" || user.role === "SCHICHTPLANUNG"
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
                         {user.role}
                       </Badge>
                     </TableCell>
@@ -258,6 +266,7 @@ function UserFormDialog({
               <SelectContent>
                 <SelectItem value="AGENT">Agent</SelectItem>
                 <SelectItem value="CONTROLLING">Controlling</SelectItem>
+                <SelectItem value="SCHICHTPLANUNG">Schichtplanung</SelectItem>
                 <SelectItem value="ADMIN">Admin</SelectItem>
               </SelectContent>
             </Select>

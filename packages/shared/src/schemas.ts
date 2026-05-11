@@ -32,7 +32,7 @@ export const passwordResetSchema = z.object({
 export const userCreateSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(1).max(160),
-  role: z.enum(["AGENT", "CONTROLLING", "ADMIN"]),
+  role: z.enum(["AGENT", "CONTROLLING", "ADMIN", "SCHICHTPLANUNG"]),
   password: z.string().min(8).max(200),
   hourlyRateEuro: z.number().nonnegative().optional(),
   teamId: z.string().min(1).optional().nullable(),
@@ -76,6 +76,59 @@ export const calendarBatchBookingSchema = z.object({
   blocks: z.array(shiftBlockSchema).max(2),
 });
 export type CalendarBatchBookingDto = z.infer<typeof calendarBatchBookingSchema>;
+
+export const shiftplanMonthAgentVisibilitySchema = z.enum(["PLANNING_HIDDEN", "PLANNING_VISIBLE", "PUBLISHED"]);
+
+export const shiftplanMonthConfigUpsertSchema = z.object({
+  projectId: z.string().min(1),
+  month: monthString,
+  calendarBookingOpen: z.boolean(),
+  agentShiftplanVisibility: shiftplanMonthAgentVisibilitySchema,
+});
+export type ShiftplanMonthConfigUpsertDto = z.infer<typeof shiftplanMonthConfigUpsertSchema>;
+
+export const shiftplanDayOverrideUpsertSchema = z.object({
+  projectId: z.string().min(1),
+  date: dateString,
+  calendarBookingOpen: z.boolean(),
+});
+export type ShiftplanDayOverrideUpsertDto = z.infer<typeof shiftplanDayOverrideUpsertSchema>;
+
+export const shiftplanBookingTypeBlockCreateSchema = z
+  .object({
+    projectId: z.string().min(1),
+    bookingTypeId: z.string().min(1),
+    month: monthString.optional().nullable(),
+    date: dateString.optional().nullable(),
+  })
+  .refine((d) => d.month != null || d.date != null, { message: "month or date required" });
+export type ShiftplanBookingTypeBlockCreateDto = z.infer<typeof shiftplanBookingTypeBlockCreateSchema>;
+
+export const shiftplanMonthConfigDeleteSchema = z.object({
+  projectId: z.string().min(1),
+  month: monthString,
+});
+export type ShiftplanMonthConfigDeleteDto = z.infer<typeof shiftplanMonthConfigDeleteSchema>;
+
+export const shiftplanDayOverrideDeleteSchema = z.object({
+  projectId: z.string().min(1),
+  date: dateString,
+});
+export type ShiftplanDayOverrideDeleteDto = z.infer<typeof shiftplanDayOverrideDeleteSchema>;
+
+export const shiftplanTypeBlockDeleteSchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+});
+export type ShiftplanTypeBlockDeleteDto = z.infer<typeof shiftplanTypeBlockDeleteSchema>;
+
+export const schichtplanerScopesSetSchema = z.object({
+  dienstleisterIds: z.array(z.string().min(1)).max(80).optional().default([]),
+  abteilungIds: z.array(z.string().min(1)).max(80).optional().default([]),
+  projectIds: z.array(z.string().min(1)).max(80).optional().default([]),
+  teamIds: z.array(z.string().min(1)).max(80).optional().default([]),
+});
+export type SchichtplanerScopesSetDto = z.infer<typeof schichtplanerScopesSetSchema>;
 
 export const shiftCellUpsertSchema = z.object({
   agentId: z.string().min(1),

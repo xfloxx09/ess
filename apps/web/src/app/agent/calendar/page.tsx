@@ -41,6 +41,26 @@ type BookingHistory = {
   atIso: string;
 };
 
+type MyBookingRules = {
+  projectId: string | null;
+  monthDefaultOpen: boolean;
+  shiftplanVisibility: string;
+  dayOverrides: Array<{ date: string; calendarBookingOpen: boolean }>;
+  blockedBookingTypeIds: string[];
+};
+
+function effectiveDayOpen(date: string, rules: MyBookingRules | null): boolean {
+  if (!rules?.projectId) return true;
+  const o = rules.dayOverrides.find((x) => x.date === date);
+  if (o) return o.calendarBookingOpen;
+  return rules.monthDefaultOpen;
+}
+
+function isTypeBlocked(typeId: string, rules: MyBookingRules | null): boolean {
+  if (!rules?.projectId) return false;
+  return rules.blockedBookingTypeIds.includes(typeId);
+}
+
 type TimeBlock = { start: string; end: string };
 type TimeSetter = (value: TimeBlock | ((prev: TimeBlock) => TimeBlock)) => void;
 
@@ -58,6 +78,7 @@ export default function CalendarPage() {
   const [blockOne, setBlockOne] = useState({ start: "09:00", end: "13:00" });
   const [blockTwo, setBlockTwo] = useState({ start: "16:30", end: "21:00" });
   const [status, setStatus] = useState("Klick auf einen Tag, dann im Pop-up buchen.");
+  const [rules, setRules] = useState<MyBookingRules | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -67,17 +88,19 @@ export default function CalendarPage() {
       api<BookingType[]>("/calendar/booking-types", undefined, token),
       api<Booking[]>(`/calendar/mine?month=${month}`, undefined, token),
       api<BookingHistory[]>(`/calendar/history?month=${month}`, undefined, token),
+      api<MyBookingRules>(`/calendar/my-booking-rules?month=${encodeURIComponent(month)}`, undefined, token),
     ])
-      .then(([types, myBookings, changes]) => {
+      .then(([types, myBookings, changes, r]) => {
         setBookingTypes(types);
         setBookings(myBookings);
         setHistory(changes);
+        setRules(r);
         if (types.length > 0 && !bookingTypeId) {
           setBookingTypeId(types[0].id);
         }
       })
       .catch((error) => setStatus(toMessage(error)));
-  }, [month, token, bookingTypeId]);
+  }, [month, token]);
 
   const selectedBookingType = bookingTypes.find((entry) => entry.id === bookingTypeId);
   const activeBooking = bookings.find((entry) => entry.date === date);
@@ -87,14 +110,16 @@ export default function CalendarPage() {
   async function reloadMonth() {
     if (!token) return;
     try {
-      const [types, myBookings, changes] = await Promise.all([
+      const [types, myBookings, changes, r] = await Promise.all([
         api<BookingType[]>("/calendar/booking-types", undefined, token),
         api<Booking[]>(`/calendar/mine?month=${month}`, undefined, token),
         api<BookingHistory[]>(`/calendar/history?month=${month}`, undefined, token),
+        api<MyBookingRules>(`/calendar/my-booking-rules?month=${encodeURIComponent(month)}`, undefined, token),
       ]);
       setBookingTypes(types);
       setBookings(myBookings);
       setHistory(changes);
+      setRules(r);
       setStatus(t("agentWorkspace.show") + " OK");
     } catch (error) {
       setStatus(toMessage(error));
@@ -114,16 +139,34 @@ export default function CalendarPage() {
         setBlockOne(existing.blocks[0]);
       }
     } else {
-      const defaultType = bookingTypes.find((entry) => resolveCategory(entry) === "SHIFT") ?? bookingTypes[0];
-      if (defaultType) {
-        setBookingTypeId(defaultType.id);
-        applyPreset(defaultType.code, setBlockOne, setBlockTwo);
+      const dayOpen = effectiveDayOpen(day, rules);
+      if (!dayOpen) {
+        const sick = bookingTypes.find((entry) => entry.code === "K");
+        if (!sick) {
+          setStatus(t("agentWorkspace.calendarDayClosed"));
+          return;
+        }
+        setBookingTypeId(sick.id);
+        applyPreset(sick.code, setBlockOne, setBlockTwo);
+      } else {
+        const defaultType =
+          bookingTypes.find((entry) => resolveCategory(entry) === "SHIFT" && !isTypeBlocked(entry.id, rules)) ??
+          bookingTypes.find((entry) => !isTypeBlocked(entry.id, rules)) ??
+          bookingTypes[0];
+        if (defaultType) {
+          setBookingTypeId(defaultType.id);
+          applyPreset(defaultType.code, setBlockOne, setBlockTwo);
+        }
       }
     }
     setIsModalOpen(true);
   }
 
   function chooseType(typeId: string) {
+    if (isTypeBlocked(typeId, rules) && !bookings.some((b) => b.date === date && b.bookingTypeId === typeId)) {
+      setStatus(t("agentWorkspace.calendarTypeBlocked"));
+      return;
+    }
     setBookingTypeId(typeId);
     const type = bookingTypes.find((entry) => entry.id === typeId);
     if (type) {
@@ -137,6 +180,15 @@ export default function CalendarPage() {
     }
     if (!selectedBookingType) {
       setStatus("Wähle zuerst einen Buchungstyp im Pop-up.");
+      return;
+    }
+    if (isTypeBlocked(selectedBookingType.id, rules) && !bookings.find((entry) => entry.date === date && entry.bookingTypeId === selectedBookingType.id)) {
+      setStatus(t("agentWorkspace.calendarTypeBlocked"));
+      return;
+    }
+    const dayOk = effectiveDayOpen(date, rules) || selectedBookingType.code === "K";
+    if (!dayOk) {
+      setStatus(t("agentWorkspace.calendarDayClosed"));
       return;
     }
     try {
@@ -321,11 +373,12 @@ export default function CalendarPage() {
             }
             const dayBooking = bookings.find((booking) => booking.date === cell);
             const dayType = bookingTypes.find((type) => type.id === dayBooking?.bookingTypeId);
+            const dayOpen = effectiveDayOpen(cell, rules);
             return (
               <button
                 key={cell}
                 type="button"
-                className={`calendar-day ${date === cell ? "calendar-day-active" : ""}`}
+                className={`calendar-day ${date === cell ? "calendar-day-active" : ""} ${!dayOpen && !dayBooking ? "opacity-60" : ""}`}
                 style={
                   dayType
                     ? {
@@ -399,11 +452,14 @@ export default function CalendarPage() {
               <div className="booking-chip-grid">
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "SHIFT")
-                .map((type) => (
+                .map((type) => {
+                  const blocked = isTypeBlocked(type.id, rules) && !bookings.some((b) => b.date === date && b.bookingTypeId === type.id);
+                  return (
                     <button
                       key={type.id}
                       type="button"
-                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      disabled={blocked}
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"} ${blocked ? "cursor-not-allowed opacity-45" : ""}`}
                       onClick={() => chooseType(type.id)}
                     >
                       <span className="inline-flex shrink-0" style={{ color: type.color }}>
@@ -411,7 +467,8 @@ export default function CalendarPage() {
                       </span>
                       {type.label}
                     </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -421,11 +478,14 @@ export default function CalendarPage() {
               <div className="booking-chip-grid">
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "VACATION")
-                .map((type) => (
+                .map((type) => {
+                  const blocked = isTypeBlocked(type.id, rules) && !bookings.some((b) => b.date === date && b.bookingTypeId === type.id);
+                  return (
                     <button
                       key={type.id}
                       type="button"
-                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      disabled={blocked}
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"} ${blocked ? "cursor-not-allowed opacity-45" : ""}`}
                       onClick={() => chooseType(type.id)}
                     >
                       <span className="inline-flex shrink-0" style={{ color: type.color }}>
@@ -433,7 +493,8 @@ export default function CalendarPage() {
                       </span>
                       {type.label}
                     </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -442,11 +503,14 @@ export default function CalendarPage() {
               <div className="booking-chip-grid">
               {bookingTypes
                 .filter((type) => resolveCategory(type) === "SICK")
-                .map((type) => (
+                .map((type) => {
+                  const blocked = isTypeBlocked(type.id, rules) && !bookings.some((b) => b.date === date && b.bookingTypeId === type.id);
+                  return (
                     <button
                       key={type.id}
                       type="button"
-                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"}`}
+                      disabled={blocked}
+                      className={`inline-flex items-center justify-center gap-2 ${bookingTypeId === type.id ? "" : "btn-secondary"} ${blocked ? "cursor-not-allowed opacity-45" : ""}`}
                       onClick={() => chooseType(type.id)}
                     >
                       <span className="inline-flex shrink-0" style={{ color: type.color }}>
@@ -454,7 +518,8 @@ export default function CalendarPage() {
                       </span>
                       {type.label}
                     </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

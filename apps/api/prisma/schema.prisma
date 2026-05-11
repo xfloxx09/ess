@@ -32,6 +32,7 @@ enum UserRole {
   AGENT
   ADMIN
   CONTROLLING
+  SCHICHTPLANUNG
 }
 
 model User {
@@ -134,6 +135,12 @@ model Abteilung {
   @@index([dienstleisterId])
 }
 
+enum ShiftplanMonthAgentVisibility {
+  PLANNING_HIDDEN
+  PLANNING_VISIBLE
+  PUBLISHED
+}
+
 model Project {
   id          String     @id @default(cuid())
   name        String
@@ -143,10 +150,54 @@ model Project {
   teams       Team[]
   premiums    ProductPremium[]
   salesEntries SalesEntry[]
+  shiftplanMonthConfigs ProjectShiftplanMonthConfig[]
+  calendarDayOverrides  ProjectCalendarDayOverride[]
+  bookingTypeBlocks     ProjectBookingTypeBlock[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
   @@index([abteilungId])
+}
+
+model ProjectShiftplanMonthConfig {
+  id                       String                        @id @default(cuid())
+  projectId                String
+  project                  Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month                    String
+  calendarBookingOpen      Boolean                       @default(true)
+  agentShiftplanVisibility ShiftplanMonthAgentVisibility @default(PUBLISHED)
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+
+  @@unique([projectId, month])
+  @@index([projectId])
+}
+
+model ProjectCalendarDayOverride {
+  id                    String   @id @default(cuid())
+  projectId             String
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date                  String
+  calendarBookingOpen   Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([projectId, date])
+}
+
+model ProjectBookingTypeBlock {
+  id            String      @id @default(cuid())
+  projectId     String
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month         String?
+  date          String?
+  bookingTypeId String
+  bookingType   BookingType @relation(fields: [bookingTypeId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([projectId, month])
+  @@index([projectId, date])
 }
 
 model Team {
@@ -260,6 +311,7 @@ model BookingType {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   bookings         CalendarBooking[]
+  projectBlocks    ProjectBookingTypeBlock[]
 }
 
 model CalendarPolicy {

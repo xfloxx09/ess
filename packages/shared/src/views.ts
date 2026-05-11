@@ -23,6 +23,8 @@ export const APP_VIEW_KEYS = [
   "admin_users",
   "admin_catalog",
   "admin_calendar_rules",
+  "admin_shiftplan_booking",
+  "admin_schichtplaner_access",
   "admin_config",
   "admin_org_access",
   "admin_audit",
@@ -55,6 +57,8 @@ const CONTROLLING_VIEWS: AppViewKey[] = [
   "dashboard_kpi",
 ];
 
+const SCHICHTPLANUNG_VIEWS: AppViewKey[] = ["controlling_roster_day", "controlling_roster_month"];
+
 /** Baseline menu/API visibility from the system role before access-role grants are merged. */
 export function defaultVisibleViewsForRole(role: UserRole): AppViewKey[] {
   if (role === "ADMIN") {
@@ -62,6 +66,9 @@ export function defaultVisibleViewsForRole(role: UserRole): AppViewKey[] {
   }
   if (role === "CONTROLLING") {
     return CONTROLLING_VIEWS;
+  }
+  if (role === "SCHICHTPLANUNG") {
+    return SCHICHTPLANUNG_VIEWS;
   }
   return AGENT_VIEWS;
 }

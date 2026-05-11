@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../common/prisma.service";
 import type { RequestUser } from "../../common/authz.types";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { ShiftplanBookingRulesService } from "../shiftplan-booking-rules/shiftplan-booking-rules.service";
 
 type SlotInput = {
   agentId: string;
@@ -18,6 +19,7 @@ export class ShiftplanService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly bookingRules: ShiftplanBookingRulesService,
   ) {}
 
   async listAgents(user?: RequestUser) {
@@ -262,7 +264,7 @@ export class ShiftplanService {
   }
 
   async assertMayViewAgentMonth(user: RequestUser, targetAgentId: string) {
-    if (user.role === "ADMIN" || user.role === "CONTROLLING") return;
+    if (user.role === "ADMIN" || user.role === "CONTROLLING" || user.role === "SCHICHTPLANUNG") return;
     if (user.role === "AGENT" && user.id === targetAgentId) return;
     if (user.role === "AGENT" && user.allowedProjectIds) {
       const visible = await this.getAgentIdsVisibleTo(user);
@@ -271,14 +273,37 @@ export class ShiftplanService {
     throw new ForbiddenException("Not allowed to load this agent's shiftplan.");
   }
 
-  listAgentMonth(agentId: string, month: string) {
+  async listAgentMonth(agentId: string, month: string, viewer?: RequestUser) {
+    if (viewer?.role === "AGENT" && viewer.id === agentId) {
+      const vis = await this.bookingRules.getAgentShiftplanVisibilityForMonth(agentId, month);
+      if (vis === "PLANNING_HIDDEN") return [];
+    }
     return this.prisma.shiftplanCell.findMany({
       where: { agentId, date: { startsWith: month } },
       orderBy: [{ date: "asc" }, { slotIndex: "asc" }],
     });
   }
 
-  async listAgentFinalMonth(agentId: string, month: string) {
+  async listAgentFinalMonth(agentId: string, month: string, viewer?: RequestUser) {
+    const hide =
+      viewer?.role === "AGENT" &&
+      viewer.id === agentId &&
+      (await this.bookingRules.getAgentShiftplanVisibilityForMonth(agentId, month)) === "PLANNING_HIDDEN";
+
+    if (hide) {
+      const bookings = await this.prisma.calendarBooking.findMany({
+        where: { agentId, date: { startsWith: month } },
+        orderBy: { date: "asc" },
+      });
+      return {
+        shiftplanHiddenFromAgent: true as const,
+        bookings,
+        cells: [] as never[],
+        antraege: [] as never[],
+        days: [] as never[],
+      };
+    }
+
     const [cells, bookings, antraegeAll, bookingTypes] = await Promise.all([
       this.prisma.shiftplanCell.findMany({ where: { agentId, date: { startsWith: month } } }),
       this.prisma.calendarBooking.findMany({ where: { agentId, date: { startsWith: month } } }),

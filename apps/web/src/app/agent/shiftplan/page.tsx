@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,7 @@ type ShiftplanCell = {
 type CodeDef = { id: string; code: string; label: string; color: string };
 
 type ShiftplanFinalResponse = {
+  shiftplanHiddenFromAgent?: boolean;
   bookings: Array<{ id: string; date: string; bookingTypeId: string; blocks: Array<{ start: string; end: string }> }>;
   cells: ShiftplanCell[];
   antraege: Array<{
@@ -157,7 +158,16 @@ export default function ShiftplanPage() {
         </CardContent>
       </Card>
 
-      {payload && (
+      {payload?.shiftplanHiddenFromAgent && (
+        <Card className="mb-6 border-amber-500/35 bg-amber-500/5">
+          <CardHeader>
+            <CardTitle>{t("agentWorkspace.shiftplanHiddenTitle")}</CardTitle>
+            <CardDescription>{t("agentWorkspace.shiftplanHiddenBody")}</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {payload && !payload.shiftplanHiddenFromAgent && (
         <>
           <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
