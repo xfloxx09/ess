@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
+import { RosterAgentDayModal } from "../RosterAgentDayModal";
+import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 
 type Project = { id: string; name: string };
 type DayCell = {
@@ -23,6 +25,15 @@ type RosterMonthPayload = {
   teams: TeamMonthBlock[];
 };
 
+type MenuState = {
+  x: number;
+  y: number;
+  target: RosterMenuTarget;
+  agentLabel: string;
+} | null;
+
+type ModalState = { agentId: string; agentLabel: string; date: string } | null;
+
 export default function RosterMonthPage() {
   const { token, loading } = useRequireAuth({
     roles: ["CONTROLLING", "ADMIN", "SCHICHTPLANUNG"],
@@ -33,6 +44,8 @@ export default function RosterMonthPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [data, setData] = useState<RosterMonthPayload | null>(null);
   const [status, setStatus] = useState("Projekt wählen und Monatsplan laden.");
+  const [menu, setMenu] = useState<MenuState>(null);
+  const [modal, setModal] = useState<ModalState>(null);
 
   const loadProjects = useCallback(() => {
     if (!token) {
@@ -77,9 +90,9 @@ export default function RosterMonthPage() {
       <div className="page-head">
         <h2>Monatsschichtplan</h2>
         <p>
-          Gesamtmonat je Projekt: alle Teams mit allen Agenten. Pro Tag ein Kästchen: <strong>grün</strong> = Anwesenheit (A),{" "}
-          <strong>grau</strong> = keine Daten, <strong>gelb</strong> = Slots ohne A, <strong>Rand rot</strong> = Abweichungen Roh/Control.
-          Zelle anklicken öffnet die <strong>Tagesmatrix</strong> zum Bearbeiten.
+          Pro Tag ein Kästchen: <strong>grün</strong> = A, <strong>grau</strong> = leer, <strong>gelb</strong> = ohne A, <strong>rand rot</strong> =
+          Abweichungen. <strong>Linksklick</strong> öffnet die Tageszeile zum Bearbeiten. <strong>Rechtsklick</strong>: Schnellmenü (FTE, kopieren,
+          Tag leeren).
         </p>
       </div>
 
@@ -104,6 +117,49 @@ export default function RosterMonthPage() {
       </div>
 
       <p className={status.includes("geladen") ? "status-ok" : "status-bad"}>{status}</p>
+
+      {token && menu && data && (
+        <RosterContextMenu
+          token={token}
+          open
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          target={menu.target}
+          projectId={data.projectId}
+          date={menu.target.scope === "month-cell" ? menu.target.date : month}
+          planner={undefined}
+          fte={undefined}
+          data={null}
+          onDone={loadMonth}
+          extraActions={
+            <button
+              type="button"
+              className="roster-ctx-item roster-ctx-primary"
+              onClick={() => {
+                if (menu.target.scope !== "month-cell") return;
+                setModal({ agentId: menu.target.agentId, date: menu.target.date, agentLabel: `${menu.agentLabel} · ${menu.target.date}` });
+                setMenu(null);
+              }}
+            >
+              Schicht bearbeiten (Matrix)
+            </button>
+          }
+        />
+      )}
+
+      {token && modal && (
+        <RosterAgentDayModal
+          token={token}
+          open
+          projectId={data?.projectId ?? projectId}
+          date={modal.date}
+          agentId={modal.agentId}
+          agentLabel={modal.agentLabel}
+          onClose={() => setModal(null)}
+          onSaved={() => void loadMonth()}
+        />
+      )}
 
       {data && data.teams.length === 0 && (
         <div className="panel">
@@ -150,13 +206,29 @@ export default function RosterMonthPage() {
                         if (d.disagreedSlots > 0) {
                           cls += " roster-month-disagree";
                         }
-                        const title = `${d.date}\nSlots: ${d.cellCount}\nA (übereinstimmend): ${d.aAgreedSlots}\nAbweichungen: ${d.disagreedSlots}`;
-                        const href = `/controlling/roster-day?projectId=${encodeURIComponent(data.projectId)}&date=${encodeURIComponent(d.date)}`;
+                        const title = `${d.date} — Linksklick: bearbeiten · Rechtsklick: Menü`;
                         return (
-                          <td key={d.date} className="roster-month-cell-wrap p-0">
-                            <a href={href} className={cls} title={`${title}\n→ Tagesmatrix`}>
+                          <td key={d.date} className="roster-month-cell-wrap">
+                            <button
+                              type="button"
+                              className={cls}
+                              title={title}
+                              onClick={() =>
+                                setModal({ agentId: agent.agentId, date: d.date, agentLabel: `${agent.fullName} · ${d.date}` })
+                              }
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMenu({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  target: { scope: "month-cell", agentId: agent.agentId, date: d.date },
+                                  agentLabel: agent.fullName,
+                                });
+                              }}
+                            >
                               {d.worked ? "A" : d.present ? "·" : ""}
-                            </a>
+                            </button>
                           </td>
                         );
                       })}

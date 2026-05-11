@@ -355,7 +355,7 @@
     @apply p-0 align-middle;
   }
   .roster-month-cell {
-    @apply flex min-h-7 min-w-6 items-center justify-center text-center text-xs no-underline text-inherit;
+    @apply flex h-full w-full min-h-7 min-w-6 cursor-pointer appearance-none items-center justify-center border-0 border-b border-r border-border bg-transparent text-center text-xs text-inherit hover:opacity-90;
   }
   .roster-month-empty {
     @apply bg-muted/15 text-muted-foreground;
@@ -369,6 +369,51 @@
   .roster-month-disagree {
     @apply ring-2 ring-destructive/60 ring-inset;
   }
+
+  .roster-ctx-menu {
+    @apply z-[2000] flex flex-col gap-0.5 p-2 text-sm shadow-lg;
+  }
+  .roster-ctx-item {
+    @apply w-full cursor-pointer rounded border-0 bg-transparent px-2 py-1.5 text-left text-foreground hover:bg-muted;
+  }
+  .roster-ctx-item:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .roster-ctx-primary {
+    @apply font-medium text-primary;
+  }
+  .roster-ctx-hr {
+    @apply my-1 border-border;
+  }
+  .roster-ctx-sub {
+    @apply flex flex-col gap-1 py-1;
+  }
+  .roster-ctx-sub label {
+    @apply text-xs text-muted-foreground;
+  }
+  .roster-ctx-field {
+    @apply flex flex-col gap-1 py-1;
+  }
+  .roster-ctx-field label {
+    @apply text-xs text-muted-foreground;
+  }
+
+  .roster-modal-root {
+    @apply fixed inset-0 z-[2100];
+  }
+  .roster-modal-backdrop {
+    @apply absolute inset-0 cursor-default border-0 bg-black/40 p-0;
+  }
+  .roster-modal-panel {
+    @apply absolute left-1/2 top-4 z-[2101] max-h-[90vh] w-[min(96vw,1100px)] -translate-x-1/2 overflow-auto p-4 shadow-xl;
+  }
+  .roster-modal-head {
+    @apply mb-2 flex items-start justify-between gap-2;
+  }
+  .roster-modal-close {
+    @apply rounded border-0 bg-transparent px-2 py-0 text-2xl leading-none text-muted-foreground hover:bg-muted hover:text-foreground;
+  }
+
   .roster-agent-email {
     @apply text-[11px] font-normal text-muted-foreground;
   }

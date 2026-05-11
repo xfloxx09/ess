@@ -3,29 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
+import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
+import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
+import { immutPatchSlot, slotStartLabel } from "../roster-shared";
 
 type Project = { id: string; name: string };
 type CodeDef = { id: string; code: string; label: string; color: string };
-type SlotCell = {
-  slotIndex: number;
-  controllerCode: string | null;
-  rawCode: string | null;
-  agreed: boolean;
-  version: number | null;
-};
 type AgentRow = { agentId: string; fullName: string; email: string; fte: number; slots: SlotCell[] };
 type TeamBlock = { teamId: string; teamName: string; agents: AgentRow[] };
-
-type PauseSeg = { workMinutes: number; pauseMinutes: number };
-
-type RosterProjectPayload = {
-  projectId: string;
-  projectName: string;
-  date: string;
-  quarterHourCodes: CodeDef[];
-  teams: TeamBlock[];
-  planner: { targetDayMinutes: number; pausePattern: PauseSeg[] };
-};
 
 type SavedCell = {
   agentId: string;
@@ -36,97 +21,7 @@ type SavedCell = {
   version: number;
 };
 
-function slotStartLabel(slot: number): string {
-  const m = slot * 15;
-  const h = Math.floor(m / 60);
-  const min = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-}
-
 type Tool = { kind: "code"; code: string } | { kind: "mirror-raw" } | { kind: "erase" };
-
-type PendingOp =
-  | { kind: "set"; controllerCode: string; rawCode: string; expectedVersion?: number }
-  | { kind: "clear" };
-
-function immutPatchSlot(
-  payload: RosterProjectPayload,
-  agentId: string,
-  slotIndex: number,
-  controllerCode: string | null,
-  rawCode: string | null,
-): RosterProjectPayload {
-  return {
-    ...payload,
-    teams: payload.teams.map((team) => ({
-      ...team,
-      agents: team.agents.map((row) =>
-        row.agentId !== agentId
-          ? row
-          : {
-              ...row,
-              slots: row.slots.map((s) =>
-                s.slotIndex === slotIndex
-                  ? {
-                      ...s,
-                      controllerCode,
-                      rawCode,
-                      agreed: !!(controllerCode && rawCode && controllerCode === rawCode),
-                      version: controllerCode && rawCode ? s.version : null,
-                    }
-                  : s,
-              ),
-            },
-      ),
-    })),
-  };
-}
-
-function timeToSlotIndex(hhmm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min) || min % 15 !== 0 || h < 0 || h > 23) return null;
-  const idx = h * 4 + min / 15;
-  return idx >= 0 && idx < 96 ? idx : null;
-}
-
-function buildFteSlots(params: { fte: number; targetDayMinutes: number; pausePattern: PauseSeg[]; startSlot: number }): { slotIndex: number; code: "A" | "P" }[] {
-  const workBudget = Math.max(0, Math.round(params.targetDayMinutes * params.fte));
-  const pattern =
-    params.pausePattern.length > 0
-      ? params.pausePattern
-      : [
-          { workMinutes: 120, pauseMinutes: 15 },
-          { workMinutes: 120, pauseMinutes: 30 },
-          { workMinutes: 120, pauseMinutes: 15 },
-        ];
-  let remainingWork = workBudget;
-  let cursor = params.startSlot;
-  const out: { slotIndex: number; code: "A" | "P" }[] = [];
-  let pi = 0;
-  while (remainingWork >= 15 && cursor < 96) {
-    const seg = pattern[pi % pattern.length]!;
-    const maxWorkSlots = Math.floor(seg.workMinutes / 15);
-    const capSlots = Math.min(maxWorkSlots, Math.floor(remainingWork / 15), 96 - cursor);
-    for (let k = 0; k < capSlots; k++) {
-      out.push({ slotIndex: cursor, code: "A" });
-      cursor += 1;
-      remainingWork -= 15;
-    }
-    const completedFullWork = capSlots === maxWorkSlots && maxWorkSlots > 0;
-    if (remainingWork < 15 || cursor >= 96) break;
-    if (!completedFullWork) break;
-    const pauseSlots = Math.floor(seg.pauseMinutes / 15);
-    for (let k = 0; k < pauseSlots && cursor < 96; k++) {
-      out.push({ slotIndex: cursor, code: "P" });
-      cursor += 1;
-    }
-    pi += 1;
-  }
-  return out;
-}
 
 export default function RosterDayPage() {
   const { token, loading } = useRequireAuth({
@@ -141,15 +36,15 @@ export default function RosterDayPage() {
   const [saving, setSaving] = useState(false);
   const [activeTool, setActiveTool] = useState<Tool>({ kind: "code", code: "A" });
   const [preserveRaw, setPreserveRaw] = useState(true);
-  const [copyFromDate, setCopyFromDate] = useState("");
-  const [copyFromMonth, setCopyFromMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [copyToMonth, setCopyToMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [fteStart, setFteStart] = useState("08:00");
-  const [fteAgentId, setFteAgentId] = useState<string>("");
   const dragRef = useRef(false);
   const pendingRef = useRef<Map<string, Map<number, PendingOp>>>(new Map());
   const dataRef = useRef<RosterProjectPayload | null>(null);
   dataRef.current = data;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuX, setMenuX] = useState(0);
+  const [menuY, setMenuY] = useState(0);
+  const [menuTarget, setMenuTarget] = useState<RosterMenuTarget | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -220,19 +115,6 @@ export default function RosterDayPage() {
     });
   }, [data]);
 
-  useEffect(() => {
-    if (!data) return;
-    const flat: { id: string; name: string }[] = [];
-    for (const t of data.teams) {
-      for (const a of t.agents) {
-        flat.push({ id: a.agentId, name: a.fullName });
-      }
-    }
-    if (flat.length && fteAgentId !== "" && !flat.some((x) => x.id === fteAgentId)) {
-      setFteAgentId(flat[0]!.id);
-    }
-  }, [data, fteAgentId]);
-
   const loadProjectDay = useCallback(async () => {
     if (!token || !projectId) {
       setStatus("Projekt auswählen.");
@@ -256,110 +138,6 @@ export default function RosterDayPage() {
     }
   }, [token, projectId, date]);
 
-  useEffect(() => {
-    const d = new Date(`${date}T12:00:00`);
-    d.setDate(d.getDate() - 1);
-    setCopyFromDate(d.toISOString().slice(0, 10));
-  }, [date]);
-
-  const agentsFlat = useMemo(() => {
-    if (!data) return [];
-    const out: { agentId: string; fullName: string; teamName: string; fte: number }[] = [];
-    for (const t of data.teams) {
-      for (const a of t.agents) {
-        out.push({ agentId: a.agentId, fullName: a.fullName, teamName: t.teamName, fte: a.fte });
-      }
-    }
-    return out;
-  }, [data]);
-
-  const runCopyDay = useCallback(async () => {
-    if (!token || !data || !copyFromDate || copyFromDate === data.date) {
-      setStatus("Quell-Datum wählen (und vom Ziel unterscheiden).");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api("/shiftplan/copy-day", {
-        method: "POST",
-        body: JSON.stringify({ projectId: data.projectId, fromDate: copyFromDate, toDate: data.date }),
-        token,
-      });
-      setStatus("Tag kopiert.");
-      await loadProjectDay();
-    } catch (e) {
-      setStatus(toMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  }, [token, data, copyFromDate, loadProjectDay]);
-
-  const runCopyMonth = useCallback(async () => {
-    if (!token || !data || !copyFromMonth || !copyToMonth || copyFromMonth === copyToMonth) {
-      setStatus("Von-Monat und Ziel-Monat wählen (unterschiedlich).");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api("/shiftplan/copy-month", {
-        method: "POST",
-        body: JSON.stringify({ projectId: data.projectId, fromMonth: copyFromMonth, toMonth: copyToMonth }),
-        token,
-      });
-      setStatus("Monatsplan kopiert (gleicher Kalendertag → Zielmonat, bis kürzerer Monat).");
-      await loadProjectDay();
-    } catch (e) {
-      setStatus(toMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  }, [token, data, copyFromMonth, copyToMonth, loadProjectDay]);
-
-  const runFteFill = useCallback(async () => {
-    if (!token || !data) return;
-    const start = timeToSlotIndex(fteStart);
-    if (start === null) {
-      setStatus("Startzeit als HH:MM in 15-Minuten-Schritten (z. B. 08:00).");
-      return;
-    }
-    const targets = fteAgentId ? agentsFlat.filter((a) => a.agentId === fteAgentId) : agentsFlat;
-    if (targets.length === 0) return;
-    setSaving(true);
-    try {
-      for (const ag of targets) {
-        const built = buildFteSlots({
-          fte: ag.fte,
-          targetDayMinutes: data.planner.targetDayMinutes,
-          pausePattern: data.planner.pausePattern,
-          startSlot: start,
-        });
-        if (built.length === 0) continue;
-        const from = start;
-        const to = built[built.length - 1]!.slotIndex;
-        const clearIdx: number[] = [];
-        for (let s = from; s <= to; s++) clearIdx.push(s);
-        await api("/shiftplan/bulk-clear", {
-          method: "POST",
-          body: JSON.stringify({ agentId: ag.agentId, date: data.date, slotIndices: clearIdx }),
-          token,
-        });
-        const slots = built.map((b) => ({ slotIndex: b.slotIndex, controllerCode: b.code, rawCode: b.code }));
-        await api("/shiftplan/bulk", {
-          method: "POST",
-          body: JSON.stringify({ agentId: ag.agentId, date: data.date, slots }),
-          token,
-        });
-      }
-      setStatus("FTE-Schicht eingetragen.");
-      await loadProjectDay();
-    } catch (e) {
-      setStatus(toMessage(e));
-      await loadProjectDay();
-    } finally {
-      setSaving(false);
-    }
-  }, [token, data, fteStart, fteAgentId, agentsFlat, loadProjectDay]);
-
   const computePaint = useCallback(
     (slot: SlotCell): { controllerCode: string; rawCode: string; expectedVersion?: number } | null => {
       if (activeTool.kind === "mirror-raw") {
@@ -381,8 +159,7 @@ export default function RosterDayPage() {
 
   const paintSlot = useCallback(
     (agentId: string, slot: SlotCell) => {
-      const current = dataRef.current;
-      if (!current) {
+      if (!dataRef.current) {
         return;
       }
       if (activeTool.kind === "erase") {
@@ -503,12 +280,22 @@ export default function RosterDayPage() {
   );
 
   const onSlotDown = useCallback(
-    (agentId: string, slot: SlotCell) => {
+    (agentId: string, slot: SlotCell, e: React.MouseEvent) => {
+      if (e.button !== 0) return;
       dragRef.current = true;
       paintSlot(agentId, slot);
     },
     [paintSlot],
   );
+
+  const openSlotMenu = useCallback((e: React.MouseEvent, agentId: string, slot: SlotCell, fte: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuX(e.clientX);
+    setMenuY(e.clientY);
+    setMenuTarget({ scope: "day-slot", agentId, slotIndex: slot.slotIndex, fte });
+    setMenuOpen(true);
+  }, []);
 
   if (loading) {
     return <p className="status-ok">Lade Schichtplan…</p>;
@@ -519,8 +306,8 @@ export default function RosterDayPage() {
       <div className="page-head">
         <h2>Controlling · Tagesmatrix</h2>
         <p>
-          Projekt und Tag wählen — alle Teams erscheinen untereinander. Status aus der Code-Leiste wählen, dann Zellen anklicken oder mit
-          gedrückter Maustaste ziehen. Symbole und Farben pflegst du unter Configuration Studio (Viertelstunden-Codes).
+          Projekt und Tag wählen. Linksklick mit gewähltem Code ziehen. <strong>Rechtsklick</strong> auf eine Zelle: Schnellmenü (leeren,
+          Roh = Ctrl, FTE, Tag/Monat kopieren). Symbole unter Configuration Studio (Viertelstunden-Codes).
         </p>
       </div>
 
@@ -561,10 +348,10 @@ export default function RosterDayPage() {
       {data && (
         <div className="ctrl-roster-palette panel">
           <div className="ctrl-roster-palette__head">
-            <span>Controlling-Status</span>
+            <span>Mal-Code (Linksklick)</span>
             <label className="ctrl-roster-check">
               <input type="checkbox" checked={preserveRaw} onChange={(e) => setPreserveRaw(e.target.checked)} />
-              Rohdaten beibehalten (nur Controlling-Code ändern)
+              Rohdaten beibehalten
             </label>
           </div>
           <div className="ctrl-roster-palette__chips">
@@ -589,16 +376,16 @@ export default function RosterDayPage() {
             <button
               type="button"
               className={`ctrl-code-chip ctrl-code-chip--ghost${activeTool.kind === "mirror-raw" ? " ctrl-code-chip--active" : ""}`}
-              title="Controlling an Rohdaten angleichen"
+              title="Roh in Control spiegeln (ziehen)"
               onClick={() => setActiveTool({ kind: "mirror-raw" })}
             >
               <span className="ctrl-code-chip__sym">↺</span>
-              <span className="ctrl-code-chip__lbl">Roh = Ctrl</span>
+              <span className="ctrl-code-chip__lbl">Roh</span>
             </button>
             <button
               type="button"
               className={`ctrl-code-chip ctrl-code-chip--ghost${activeTool.kind === "erase" ? " ctrl-code-chip--active" : ""}`}
-              title="Zelle leeren (A und andere Codes entfernen)"
+              title="Zellen leeren (ziehen) — oder Rechtsklick"
               onClick={() => setActiveTool({ kind: "erase" })}
             >
               <span className="ctrl-code-chip__sym">⌫</span>
@@ -608,65 +395,26 @@ export default function RosterDayPage() {
         </div>
       )}
 
-      {data && (
-        <div className="ctrl-roster-tools panel">
-          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
-            <label className="ctrl-roster-field">
-              <span>Tag kopieren von</span>
-              <input type="date" value={copyFromDate} onChange={(e) => setCopyFromDate(e.target.value)} />
-            </label>
-            <button type="button" onClick={() => void runCopyDay()} disabled={saving}>
-              Tag übernehmen → {data.date}
-            </button>
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Ersetzt den geladenen Tag im Projekt.
-            </span>
-          </div>
-          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginTop: "0.75rem" }}>
-            <label className="ctrl-roster-field">
-              <span>Monat kopieren von</span>
-              <input type="month" value={copyFromMonth} onChange={(e) => setCopyFromMonth(e.target.value)} />
-            </label>
-            <label className="ctrl-roster-field">
-              <span>nach</span>
-              <input type="month" value={copyToMonth} onChange={(e) => setCopyToMonth(e.target.value)} />
-            </label>
-            <button type="button" onClick={() => void runCopyMonth()} disabled={saving}>
-              Monat kopieren
-            </button>
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              1.→1., 2.→2., … bis zum kürzeren Monat.
-            </span>
-          </div>
-          <div className="ctrl-roster-toolbar__row" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginTop: "0.75rem" }}>
-            <label className="ctrl-roster-field">
-              <span>Start (FTE + Pausen)</span>
-              <input type="time" step={900} value={fteStart} onChange={(e) => setFteStart(e.target.value)} />
-            </label>
-            <label className="ctrl-roster-field">
-              <span>Agent</span>
-              <select value={fteAgentId} onChange={(e) => setFteAgentId(e.target.value)}>
-                <option value="">Alle Agenten</option>
-                {agentsFlat.map((a) => (
-                  <option key={a.agentId} value={a.agentId}>
-                    {a.teamName}: {a.fullName} (FTE {a.fte})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" onClick={() => void runFteFill()} disabled={saving}>
-              A + P nach FTE eintragen
-            </button>
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Zielzeit {data.planner.targetDayMinutes} min × FTE; Pausen laut Admin (Projekt).
-            </span>
-          </div>
-        </div>
+      {token && menuOpen && menuTarget && data && (
+        <RosterContextMenu
+          token={token}
+          open={menuOpen}
+          x={menuX}
+          y={menuY}
+          onClose={() => setMenuOpen(false)}
+          target={menuTarget}
+          projectId={data.projectId}
+          date={data.date}
+          planner={data.planner}
+          fte={menuTarget.scope === "day-slot" ? menuTarget.fte : undefined}
+          data={data}
+          onDone={loadProjectDay}
+        />
       )}
 
       <p className={status.includes("Geladen") || status.includes("gespeichert") ? "status-ok" : "panel"}>{status}</p>
 
-      {data?.teams.map((team) => (
+      {data?.teams.map((team: TeamBlock) => (
         <section key={team.teamId} className="ctrl-roster-team panel">
           <div className="ctrl-roster-team__head">
             <h3>{team.teamName}</h3>
@@ -688,7 +436,7 @@ export default function RosterDayPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {team.agents.map((row) => (
+                  {team.agents.map((row: AgentRow) => (
                     <tr key={row.agentId}>
                       <td className="roster-sticky-col roster-agent-cell">
                         <strong>{row.fullName}</strong>
@@ -703,18 +451,16 @@ export default function RosterDayPage() {
                         return (
                           <td
                             key={slot.slotIndex}
-                            role="button"
+                            role="gridcell"
                             tabIndex={0}
                             className={`roster-slot-cell ctrl-roster-slot${slot.agreed ? "" : " roster-slot-warn"}`}
                             style={{
                               background: slot.controllerCode ? `${bg}55` : undefined,
                               color: slot.controllerCode ? "#112033" : "#aab7c4",
                             }}
-                            title={`Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · ${slot.agreed ? "stimmt" : "abweichend"}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              onSlotDown(row.agentId, slot);
-                            }}
+                            title={`Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Rechtsklick = Menü`}
+                            onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
+                            onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
                             onMouseEnter={() => onSlotEnter(row.agentId, slot)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
