@@ -527,11 +527,35 @@
   .roster-matrix-body {
     scrollbar-gutter: stable;
   }
-  .roster-matrix-slot.roster-matrix-slot--zebra-even:not(.roster-slot-selected):not(.roster-slot-cal-hint) {
-    background-color: hsl(var(--muted) / 0.22);
+  /* Tagesmatrix: weniger „Kästchen“, eher Timeline — Zellen nur mit linker Trennlinie */
+  .roster-matrix-grid--lanes .roster-hour-band-head {
+    @apply border-l border-border/30;
   }
-  .roster-matrix-slot.roster-matrix-slot--zebra-odd:not(.roster-slot-selected):not(.roster-slot-cal-hint) {
-    background-color: hsl(var(--card) / 0.65);
+  .roster-matrix-slot-head--lane {
+    @apply bg-muted/25;
+  }
+  .roster-matrix-slot-head--hour {
+    @apply border-l-primary/40 bg-muted/45;
+  }
+  .roster-matrix-slot-head-btn {
+    @apply m-0 w-full cursor-pointer appearance-none rounded-none border-0 p-0 text-center font-inherit;
+  }
+  .roster-matrix-slot--lane {
+    @apply border-r-0;
+  }
+  .roster-matrix-slot--hour-start {
+    box-shadow: inset 3px 0 0 0 hsl(var(--primary) / 0.32);
+    border-left-color: hsl(var(--primary) / 0.22);
+  }
+  .roster-matrix-slot-chip {
+    @apply inline-flex min-h-[1.25rem] min-w-[1rem] max-w-full items-center justify-center rounded-md px-1 py-0.5 text-[11px] leading-tight;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+  }
+  .roster-matrix-slot.roster-matrix-slot--zebra-even.roster-matrix-slot--empty:not(.roster-slot-selected):not(.roster-slot-cal-hint) {
+    background-color: hsl(var(--muted) / 0.1);
+  }
+  .roster-matrix-slot.roster-matrix-slot--zebra-odd.roster-matrix-slot--empty:not(.roster-slot-selected):not(.roster-slot-cal-hint) {
+    background-color: hsl(var(--card) / 0.35);
   }
   .roster-matrix-agent {
     box-shadow: 3px 0 8px -4px rgb(0 0 0 / 0.18);

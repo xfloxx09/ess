@@ -7,7 +7,7 @@ import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
 import type { PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
-import { findAgentInPayload, immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, rosterSlotKey, slotStartLabel } from "../roster-shared";
+import { findAgentInPayload, immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, rosterSlotKey, slotStartLabel, timeToSlotIndex } from "../roster-shared";
 import { RosterDayTeamMatrix } from "../RosterDayTeamMatrix";
 
 type Project = { id: string; name: string };
@@ -60,6 +60,11 @@ export default function RosterDayPage() {
   const [agentSearch, setAgentSearch] = useState("");
   /** Während Linksklick-Zieh-Auswahl: Virtualizer rendert mehr Zeilen (Treffer unter dem Cursor). */
   const [rosterDragBoost, setRosterDragBoost] = useState(false);
+  /** Breitere Mindestbreite der Viertelstunden-Spalten in der Matrix */
+  const [wideSlots, setWideSlots] = useState(false);
+  /** Schnellauswahl: Zeitraum für alle sichtbaren Agenten (HH:MM, 15-Min-Schritte) */
+  const [bulkFromTime, setBulkFromTime] = useState("08:00");
+  const [bulkToTime, setBulkToTime] = useState("17:00");
   /** Team-Matrizen per Klick ein- und ausblenden (Übersicht bei vielen Teams). */
   const [collapsedTeamIds, setCollapsedTeamIds] = useState<Set<string>>(() => new Set());
 
@@ -538,6 +543,66 @@ export default function RosterDayPage() {
     setMenuOpen(true);
   }, []);
 
+  const selectTeamColumn = useCallback(
+    (teamId: string, slotIndex: number, addToSelection: boolean) => {
+      const team = displayTeams.find((t) => t.teamId === teamId);
+      if (!team || !slotIndices.includes(slotIndex)) {
+        return;
+      }
+      setSelectedKeys((prev) => {
+        const next = new Set(addToSelection ? prev : []);
+        for (const a of team.agents) {
+          next.add(rosterSlotKey(a.agentId, slotIndex));
+        }
+        return next;
+      });
+    },
+    [displayTeams, slotIndices],
+  );
+
+  const selectAgentRowVisible = useCallback(
+    (agentId: string) => {
+      const visible = displayTeams.some((t) => t.agents.some((a) => a.agentId === agentId));
+      if (!visible) {
+        return;
+      }
+      setSelectedKeys(() => {
+        const next = new Set<string>();
+        for (const s of slotIndices) {
+          next.add(rosterSlotKey(agentId, s));
+        }
+        return next;
+      });
+    },
+    [displayTeams, slotIndices],
+  );
+
+  const selectBulkTimeRangeVisible = useCallback(() => {
+    const from = timeToSlotIndex(bulkFromTime);
+    const to = timeToSlotIndex(bulkToTime);
+    if (from === null || to === null) {
+      setStatus("Zeiten im Format HH:MM in 15-Minuten-Schritten (z. B. 08:00, 08:15).");
+      return;
+    }
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const visible = new Set(slotIndices);
+    const next = new Set<string>();
+    for (const team of displayTeams) {
+      for (const ag of team.agents) {
+        for (let s = lo; s <= hi; s++) {
+          if (visible.has(s)) {
+            next.add(rosterSlotKey(ag.agentId, s));
+          }
+        }
+      }
+    }
+    setSelectedKeys(next);
+    setStatus(
+      `${next.size} Zellen markiert (${slotStartLabel(lo)}–${slotStartLabel(hi)}, alle sichtbaren Agenten). Werkzeug wählen und „Übernehmen & speichern“.`,
+    );
+  }, [bulkFromTime, bulkToTime, displayTeams, slotIndices]);
+
   if (loading) {
     return <p className="status-ok">Lade Schichtplan…</p>;
   }
@@ -547,9 +612,13 @@ export default function RosterDayPage() {
       <div className="page-head">
         <h2>Schichtplanung · Tagesmatrix</h2>
         <p>
-          <strong>Raster</strong>: In <strong>einer Agentenzeile</strong> ziehen — es wird immer der <strong>lückenlose Block</strong> zwischen Start- und End-Viertelstunde markiert (auch bei schneller Mausbewegung). <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Umschalt</kbd> hält die bisherige Auswahl und addiert einen weiteren Block.{" "}
+          <strong>Raster</strong>: In <strong>einer Zeile</strong> ziehen markiert einen lückenlosen Block.{" "}
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Umschalt</kbd> addiert einen weiteren Block,{" "}
           <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Strg</kbd>/
-          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">⌘</kbd>+Klick schaltet einzelne Zellen. Werkzeug wählen, dann <strong>Übernehmen &amp; speichern</strong>. <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> hebt die Auswahl auf. Rechtsklick: Schnellaktionen. Kalender: <strong>Schichtplan → Bericht</strong>.
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">⌘</kbd>+Klick schaltet einzelne Zellen.{" "}
+          <strong>Spalte</strong>: Viertelstunde in der Kopfzeile anklicken (ganzes Team). <strong>Alle Agenten</strong>: Zeitraum unten im Werkzeugkasten.{" "}
+          <strong>Zeile</strong>: Listen-Symbol neben dem Namen. Dann Werkzeug und <strong>Übernehmen &amp; speichern</strong>.{" "}
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> hebt die Auswahl auf. Rechtsklick: Schnellaktionen.
         </p>
       </div>
 
@@ -683,7 +752,28 @@ export default function RosterDayPage() {
                 <input type="checkbox" checked={preserveRaw} onChange={(e) => setPreserveRaw(e.target.checked)} />
                 Roh beibehalten
               </label>
+              <label className="ctrl-roster-check ml-1 border-l border-border pl-3">
+                <input type="checkbox" checked={wideSlots} onChange={(e) => setWideSlots(e.target.checked)} />
+                Breitere Spalten
+              </label>
             </div>
+          </div>
+          <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border/80 bg-muted/20 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <span className="w-full text-xs font-medium text-muted-foreground sm:w-auto">Schnellauswahl (alle sichtbaren Agenten)</span>
+            <label className="ctrl-roster-field w-[6.5rem]">
+              <span>Von</span>
+              <input type="time" step={900} value={bulkFromTime} onChange={(e) => setBulkFromTime(e.target.value)} />
+            </label>
+            <label className="ctrl-roster-field w-[6.5rem]">
+              <span>Bis</span>
+              <input type="time" step={900} value={bulkToTime} onChange={(e) => setBulkToTime(e.target.value)} />
+            </label>
+            <button type="button" className="btn-secondary rounded-md px-3 py-1.5 text-sm" onClick={() => selectBulkTimeRangeVisible()}>
+              Zeitraum markieren
+            </button>
+            <p className="m-0 w-full text-[0.65rem] leading-snug text-muted-foreground sm:w-auto sm:min-w-[12rem] sm:flex-1">
+              Ersetzt die aktuelle Auswahl. Nur Zeiten im <strong className="text-foreground">sichtbaren</strong> Raster (Filter &amp; Zeitfenster oben).
+            </p>
           </div>
           <div className="ctrl-roster-palette__chips">
             {data.quarterHourCodes.map((c) => (
@@ -771,7 +861,7 @@ export default function RosterDayPage() {
                     aria-expanded={!teamCollapsed}
                     title={teamCollapsed ? "Team-Matrix aufklappen" : "Team-Matrix zuklappen"}
                     onClick={() =>
-                      setCollapsedTeamIds((prev) => {
+                      setCollapsedTeamIds((prev: Set<string>) => {
                         const next = new Set(prev);
                         if (next.has(team.teamId)) next.delete(team.teamId);
                         else next.add(team.teamId);
@@ -785,7 +875,7 @@ export default function RosterDayPage() {
                 </div>
                 <span className="muted text-sm">
                   {team.agents.length} Agenten · Raster {slotStartLabel(slotIndices[0] ?? 0)}–{slotStartLabel(slotIndices[slotIndices.length - 1] ?? 0)} (
-                  {slotIndices.length} Viertelstunden)
+                  {slotIndices.length} Viertelstunden) · Kopfzeile: Spalte fürs Team markieren
                 </span>
               </div>
               {teamCollapsed ? (
@@ -799,10 +889,13 @@ export default function RosterDayPage() {
                   hourBandGroups={hourBandGroups}
                   selectedKeys={selectedKeys}
                   codeColors={codeColors}
+                  wideSlots={wideSlots}
                   rosterDragBoost={rosterDragBoost}
                   beginSlotDrag={beginSlotDrag}
                   toggleSlotInSelection={toggleSlotInSelection}
                   openSlotMenu={openSlotMenu}
+                  onSelectTeamColumn={(slotIndex, addToSelection) => selectTeamColumn(team.teamId, slotIndex, addToSelection)}
+                  onSelectAgentRow={selectAgentRowVisible}
                 />
               )}
             </section>

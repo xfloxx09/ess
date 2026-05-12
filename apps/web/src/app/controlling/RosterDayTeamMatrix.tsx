@@ -1,6 +1,7 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { List } from "lucide-react";
 import { useMemo, useRef } from "react";
 import type { SlotCell, TeamBlock } from "./roster-shared";
 import { rosterSlotKey, slotStartLabel } from "./roster-shared";
@@ -13,11 +14,17 @@ type Props = {
   hourBandGroups: HourBand[];
   selectedKeys: Set<string>;
   codeColors: Map<string, string>;
+  /** Etwas breitere Mindestbreite pro Viertelstunde (Lesbarkeit) */
+  wideSlots?: boolean;
   /** Während Zeilen-Zieh-Auswahl: hoher Overscan, damit alle Zellen im DOM sind */
   rosterDragBoost: boolean;
   beginSlotDrag: (agentId: string, slotIndex: number, e: React.PointerEvent) => void;
   toggleSlotInSelection: (agentId: string, slot: SlotCell) => void;
   openSlotMenu: (e: React.MouseEvent, agentId: string, slot: SlotCell, fte: number) => void;
+  /** Kopfzeile: alle Agenten dieses Teams in dieser Viertelstunde markieren (Shift = zur Auswahl addieren) */
+  onSelectTeamColumn?: (slotIndex: number, addToSelection: boolean) => void;
+  /** Sichtbare Spalten dieser Agentenzeile markieren */
+  onSelectAgentRow?: (agentId: string) => void;
 };
 
 export function RosterDayTeamMatrix({
@@ -26,22 +33,26 @@ export function RosterDayTeamMatrix({
   hourBandGroups,
   selectedKeys,
   codeColors,
+  wideSlots = false,
   rosterDragBoost,
   beginSlotDrag,
   toggleSlotInSelection,
   openSlotMenu,
+  onSelectTeamColumn,
+  onSelectAgentRow,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const colTpl = useMemo(
-    () => `minmax(12rem, 16rem) repeat(${slotIndices.length}, minmax(0, 1fr))`,
-    [slotIndices.length],
+    () =>
+      `minmax(12rem, 16rem) repeat(${slotIndices.length}, minmax(${wideSlots ? "0.55rem" : "0"}, 1fr))`,
+    [slotIndices.length, wideSlots],
   );
 
   const virtualizer = useVirtualizer({
     count: team.agents.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 56,
+    estimateSize: () => 52,
     overscan: rosterDragBoost ? 96 : 14,
   });
 
@@ -68,7 +79,7 @@ export function RosterDayTeamMatrix({
       <div className="w-full min-w-0">
         <div className="border-b border-border bg-card shadow-sm">
           <div
-            className="roster-matrix-grid w-full min-w-0"
+            className="roster-matrix-grid roster-matrix-grid--lanes w-full min-w-0"
             style={{ display: "grid", gridTemplateColumns: colTpl, gridTemplateRows: "auto auto" }}
           >
           <div
@@ -78,19 +89,43 @@ export function RosterDayTeamMatrix({
             Agent
           </div>
           {bandCells}
-          {slotIndices.map((s, colIdx) => (
-            <div
-              key={s}
-              data-slot-head={s}
-              className={`roster-matrix-slot-head flex min-w-0 items-end justify-center overflow-hidden border-b border-r border-border/40 bg-muted/55 px-px pb-1 pt-1 text-[10px] font-medium tabular-nums leading-none tracking-wide text-muted-foreground${
-                s % 4 === 0 ? " roster-slot-on-hour" : ""
-              }`}
-              style={{ gridColumn: colIdx + 2, gridRow: 2 }}
-              title={slotStartLabel(s)}
-            >
-              <span className="block max-w-full truncate">{s % 4 === 0 ? "·" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}</span>
-            </div>
-          ))}
+          {slotIndices.map((s, colIdx) => {
+            const sub = s % 4 === 0 ? "·" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45";
+            const headClass = `roster-matrix-slot-head roster-matrix-slot-head--lane flex min-w-0 items-end justify-center overflow-hidden border-b border-l border-border/35 bg-muted/40 px-px pb-1 pt-1 text-[10px] font-medium tabular-nums leading-none tracking-wide text-muted-foreground${
+              s % 4 === 0 ? " roster-slot-on-hour roster-matrix-slot-head--hour" : ""
+            }`;
+            if (onSelectTeamColumn) {
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  data-slot-head={s}
+                  className={`roster-matrix-slot-head-btn ${headClass}`}
+                  style={{ gridColumn: colIdx + 2, gridRow: 2 }}
+                  title={`${slotStartLabel(s)} — Klick: alle im Team in dieser Viertelstunde markieren. Shift+Klick: zur Auswahl hinzufügen.`}
+                  aria-label={`Team-Spalte markieren ${slotStartLabel(s)}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelectTeamColumn(s, e.shiftKey);
+                  }}
+                >
+                  <span className="block max-w-full truncate">{sub}</span>
+                </button>
+              );
+            }
+            return (
+              <div
+                key={s}
+                data-slot-head={s}
+                className={headClass}
+                style={{ gridColumn: colIdx + 2, gridRow: 2 }}
+                title={slotStartLabel(s)}
+              >
+                <span className="block max-w-full truncate">{sub}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -118,11 +153,27 @@ export function RosterDayTeamMatrix({
               }}
             >
               <div
-                className={`roster-matrix-agent roster-sticky-col z-[15] flex flex-col justify-center gap-0.5 border-r border-border px-3 py-2.5 ${
+                className={`roster-matrix-agent roster-sticky-col relative z-[15] flex flex-col justify-center gap-0.5 border-r border-border py-2.5 pl-3 pr-10 ${
                   zebra ? "bg-card" : "bg-muted/25"
                 }`}
                 style={{ gridColumn: 1 }}
               >
+                {onSelectAgentRow ? (
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-border/80 bg-background/95 text-muted-foreground shadow-sm hover:border-primary/40 hover:bg-muted hover:text-foreground"
+                    title="Sichtbare Viertelstunden dieser Zeile markieren"
+                    aria-label="Ganze Zeile markieren"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSelectAgentRow(row.agentId);
+                    }}
+                  >
+                    <List className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                ) : null}
                 <strong className="line-clamp-2 text-sm leading-snug" title={row.fullName}>
                   {row.fullName}
                 </strong>
@@ -163,6 +214,7 @@ export function RosterDayTeamMatrix({
                 const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
                   calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
                 } · Ziehen = Block · Strg/⌘+Klick · Umschalt+Ziehen · Enter/Leer · Rechtsklick`;
+                const emptyCell = !hasShift && !calHint;
                 return (
                   <div
                     key={slot.slotIndex}
@@ -171,14 +223,14 @@ export function RosterDayTeamMatrix({
                     data-roster-cell="1"
                     data-roster-agent={row.agentId}
                     data-roster-slot-index={slotIndex}
-                    className={`roster-matrix-slot flex min-h-[44px] min-w-0 cursor-cell select-none items-stretch justify-center border-r border-border/50 text-center text-[11px] font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ctrl-roster-slot roster-slot-no-select${
-                      slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""
-                    }${hasShift && !slot.agreed ? " roster-slot-warn" : ""}${calHint ? " roster-slot-cal-hint" : ""}${
+                    className={`roster-matrix-slot roster-matrix-slot--lane flex min-h-[40px] min-w-0 cursor-cell select-none items-stretch justify-center border-b border-l border-border/25 text-center text-[11px] font-semibold tabular-nums outline-none transition-[background-color,box-shadow] duration-75 focus-visible:ring-2 focus-visible:ring-primary/60 ctrl-roster-slot roster-slot-no-select${
+                      emptyCell ? " roster-matrix-slot--empty" : ""
+                    }${slotIndex % 4 === 0 ? " roster-slot-on-hour roster-matrix-slot--hour-start" : ""}${hasShift && !slot.agreed ? " roster-slot-warn" : ""}${calHint ? " roster-slot-cal-hint" : ""}${
                       isSelected ? " roster-slot-selected" : ""
                     } ${zebra ? "roster-matrix-slot--zebra-even" : "roster-matrix-slot--zebra-odd"}`}
                     style={{
                       gridColumn: colIdx + 2,
-                      background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
+                      background: hasShift ? `${bg}38` : calHint ? `${bg}30` : undefined,
                       color: hasShift || calHint ? "#112033" : "#94a3b8",
                     }}
                     title={slotTitle}
@@ -192,7 +244,21 @@ export function RosterDayTeamMatrix({
                     }}
                   >
                     <div className="flex min-h-0 w-full min-w-0 flex-col items-center justify-center gap-px px-0.5 py-1">
-                      <span className="max-w-full truncate tracking-wide">{show}</span>
+                      {hasShift || calHint ? (
+                        <span
+                          className={`roster-matrix-slot-chip max-w-full truncate tracking-wide ${
+                            rawMismatch ? "ring-1 ring-destructive/50" : ""
+                          }`}
+                          style={{
+                            backgroundColor: hasShift ? `${bg}d0` : `${bg}b8`,
+                            color: "#0f172a",
+                          }}
+                        >
+                          {show}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium tabular-nums tracking-wide text-muted-foreground/45">·</span>
+                      )}
                       {rawMismatch ? (
                         <span
                           className="max-w-full truncate text-[9px] font-semibold leading-none tracking-wide text-destructive/95"
