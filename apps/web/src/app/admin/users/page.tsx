@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit, KeyRound, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import type { UserRole } from "@ess/shared";
 import { api } from "@/lib/api";
@@ -37,6 +37,14 @@ interface UserRow {
 interface UserListResponse {
   items: UserRow[];
   total: number;
+}
+
+const FTE_PRESETS = [1, 0.9, 0.88, 0.85, 0.8, 0.75, 0.67, 0.6, 0.5, 0.4] as const;
+
+function clampFte(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number.parseFloat(String(raw).replace(",", "."));
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(2, Math.max(0.1, Math.round(n * 100) / 100));
 }
 
 export default function AdminUsersPage() {
@@ -101,6 +109,7 @@ export default function AdminUsersPage() {
                 <TableHead>{t("users.table.email")}</TableHead>
                 <TableHead>{t("users.table.role")}</TableHead>
                 <TableHead>{t("users.table.team")}</TableHead>
+                <TableHead>FTE</TableHead>
                 <TableHead>{t("users.table.active")}</TableHead>
                 <TableHead>{t("users.table.lastLogin")}</TableHead>
                 <TableHead className="text-right">{t("app.actions")}</TableHead>
@@ -109,7 +118,7 @@ export default function AdminUsersPage() {
             <TableBody>
               {list.isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     {t("app.loading")}
                   </TableCell>
                 </TableRow>
@@ -132,6 +141,9 @@ export default function AdminUsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{user.team?.name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {user.fte.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={user.active ? "success" : "destructive"}>{user.active ? "✓" : "✗"}</Badge>
                     </TableCell>
@@ -170,6 +182,7 @@ export default function AdminUsersPage() {
       </Card>
 
       <UserFormDialog
+        key="create-user"
         open={creating}
         onOpenChange={(o) => setCreating(o)}
         token={auth.token ?? undefined}
@@ -177,6 +190,7 @@ export default function AdminUsersPage() {
       />
 
       <UserFormDialog
+        key={editing?.id ?? "edit-user"}
         open={!!editing}
         user={editing ?? undefined}
         onOpenChange={(o) => {
@@ -216,6 +230,19 @@ function UserFormDialog({
     fte: user?.fte ?? 1,
   });
 
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      email: user?.email ?? "",
+      fullName: user?.fullName ?? "",
+      role: (user?.role ?? "AGENT") as UserRole,
+      password: "",
+      active: user?.active ?? true,
+      hourlyRateEuro: user?.hourlyRateEuro ?? 12.5,
+      fte: user?.fte ?? 1,
+    });
+  }, [open, user]);
+
   const submit = useMutation({
     mutationFn: async () => {
       const path = isEdit ? `/admin/users/${user!.id}` : "/admin/users";
@@ -225,7 +252,7 @@ function UserFormDialog({
         role: form.role,
         active: form.active,
         hourlyRateEuro: Number(form.hourlyRateEuro) || 0,
-        fte: Number(form.fte) > 0 ? Number(form.fte) : 1,
+        fte: clampFte(form.fte),
       };
       if (form.password) body.password = form.password;
       else if (!isEdit) throw new Error("Password required");
@@ -299,14 +326,37 @@ function UserFormDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label>FTE (Schichtplanung, 1,0 = Vollzeit-Tag)</Label>
+            <Label>FTE (Schichtplanung)</Label>
+            <p className="text-xs text-muted-foreground">1,0 = Vollzeit-Soll aus dem Projekt; z. B. 0,88 / 0,75 / 0,5 für Teilzeit. Bereich 0,1–2,0.</p>
+            <div className="flex flex-wrap gap-1.5 py-1">
+              {FTE_PRESETS.map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant={Math.abs(form.fte - v) < 0.001 ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 min-w-[2.75rem] px-2 text-xs"
+                  onClick={() => setForm({ ...form, fte: v })}
+                >
+                  {v.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                </Button>
+              ))}
+            </div>
             <Input
               type="number"
-              step="0.1"
+              inputMode="decimal"
+              step="0.01"
               min={0.1}
               max={2}
               value={form.fte}
-              onChange={(e) => setForm({ ...form, fte: Number(e.target.value) })}
+              onChange={(e) => {
+                const raw = e.target.value.replace(",", ".");
+                if (raw === "" || raw === ".") return;
+                const n = Number.parseFloat(raw);
+                if (!Number.isFinite(n)) return;
+                setForm({ ...form, fte: n });
+              }}
+              onBlur={() => setForm((f) => ({ ...f, fte: clampFte(f.fte) }))}
             />
           </div>
           <DialogFooter>
