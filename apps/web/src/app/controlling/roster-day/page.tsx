@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
-import type { AgentRow, CodeDef, PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
-import { immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
+import type { AgentRow, PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
+import { findAgentInPayload, immutPatchSlot, slotStartLabel } from "../roster-shared";
 
 type Project = { id: string; name: string };
 
@@ -35,27 +35,22 @@ export default function RosterDayPage() {
   const [saving, setSaving] = useState(false);
   const [activeTool, setActiveTool] = useState<Tool>({ kind: "code", code: "A" });
   const [preserveRaw, setPreserveRaw] = useState(true);
-  const dragRef = useRef(false);
+  const selectDragRef = useRef<{ agentId: string } | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const pendingRef = useRef<Map<string, Map<number, PendingOp>>>(new Map());
   const dataRef = useRef<RosterProjectPayload | null>(null);
   dataRef.current = data;
+
+  const selectedKeysRef = useRef(selectedKeys);
+  selectedKeysRef.current = selectedKeys;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuX, setMenuX] = useState(0);
   const [menuY, setMenuY] = useState(0);
   const [menuTarget, setMenuTarget] = useState<RosterMenuTarget | null>(null);
 
-  const [timeWindow, setTimeWindow] = useState<string>("kern");
   const [teamFilterId, setTeamFilterId] = useState<string>("all");
   const [agentSearch, setAgentSearch] = useState("");
-  const [slotDensity, setSlotDensity] = useState<"kompakt" | "normal" | "weit">("normal");
-  const [fitToScreen, setFitToScreen] = useState(true);
-
-  useEffect(() => {
-    if (timeWindow === "all") {
-      setFitToScreen(true);
-    }
-  }, [timeWindow]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -76,25 +71,7 @@ export default function RosterDayPage() {
     return map;
   }, [data]);
 
-  const slotWindow = useMemo(() => {
-    if (timeWindow === ROSTER_DAY_PROJECT_OPEN_ID && data?.openingHours) {
-      const { slotStart, slotEnd } = data.openingHours;
-      return {
-        start: slotStart,
-        end: slotEnd,
-        label: "Projekt-Öffnungszeiten",
-        id: ROSTER_DAY_PROJECT_OPEN_ID,
-      };
-    }
-    const kern = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === "kern") ?? ROSTER_DAY_TIME_WINDOWS[0]!;
-    const w = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === timeWindow) ?? kern;
-    return { start: w.start, end: w.end, label: w.label, id: w.id };
-  }, [timeWindow, data?.openingHours]);
-
-  const slotIndices = useMemo(
-    () => Array.from({ length: slotWindow.end - slotWindow.start + 1 }, (_, i) => slotWindow.start + i),
-    [slotWindow.start, slotWindow.end],
-  );
+  const slotIndices = useMemo(() => Array.from({ length: 96 }, (_, i) => i), []);
 
   const displayTeams = useMemo(() => {
     if (!data) return [];
@@ -124,18 +101,6 @@ export default function RosterDayPage() {
     return `Soll-Arbeitstag FTE 1.0: ${h}h${r > 0 ? ` ${r}m` : ""} · ${pTxt}`;
   }, [data]);
 
-  useLayoutEffect(() => {
-    if (fitToScreen) return;
-    const first = slotIndices[0];
-    if (first === undefined) return;
-    document.querySelectorAll(".ctrl-roster-day-scroll").forEach((el) => {
-      const head = el.querySelector(`[data-slot-head="${first}"]`);
-      head?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
-    });
-  }, [slotIndices, fitToScreen]);
-
-  const slotPx = slotDensity === "kompakt" ? 18 : slotDensity === "weit" ? 28 : 22;
-
   const fitColPercents = useMemo(() => {
     const n = slotIndices.length;
     if (n === 0) return { agentPct: 14, slotPct: 86 };
@@ -143,8 +108,6 @@ export default function RosterDayPage() {
     const slotPct = Number(((100 - agentPct) / n).toFixed(5));
     return { agentPct, slotPct };
   }, [slotIndices.length]);
-
-  const compactHourHeader = slotIndices.length >= 40;
 
   const hourBandGroups = useMemo(() => {
     const indices = slotIndices;
@@ -199,13 +162,12 @@ export default function RosterDayPage() {
   }, [token]);
 
   useEffect(() => {
-    setTeamFilterId("all");
-    setTimeWindow((tw) => (tw === ROSTER_DAY_PROJECT_OPEN_ID ? "kern" : tw));
-  }, [projectId]);
-
-  useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    setTeamFilterId("all");
+  }, [projectId]);
 
   useEffect(() => {
     if (!data?.quarterHourCodes.length) {
@@ -234,6 +196,7 @@ export default function RosterDayPage() {
         token,
       );
       setData(payload);
+      setSelectedKeys(new Set());
       let agentCount = 0;
       for (const t of payload.teams) {
         agentCount += t.agents.length;
@@ -242,6 +205,7 @@ export default function RosterDayPage() {
     } catch (e) {
       setStatus(toMessage(e));
       setData(null);
+      setSelectedKeys(new Set());
     }
   }, [token, projectId, date]);
 
@@ -264,46 +228,17 @@ export default function RosterDayPage() {
     [activeTool, preserveRaw],
   );
 
-  const paintSlot = useCallback(
-    (agentId: string, slot: SlotCell) => {
-      if (!dataRef.current) {
-        return;
-      }
-      if (activeTool.kind === "erase") {
-        if (!slot.controllerCode && !slot.rawCode) {
-          return;
-        }
-        setData((prev) => (prev ? immutPatchSlot(prev, agentId, slot.slotIndex, null, null) : prev));
-        if (!pendingRef.current.has(agentId)) {
-          pendingRef.current.set(agentId, new Map());
-        }
-        pendingRef.current.get(agentId)!.set(slot.slotIndex, { kind: "clear" });
-        return;
-      }
-      const paint = computePaint(slot);
-      if (!paint) {
-        return;
-      }
-      setData((prev) => (prev ? immutPatchSlot(prev, agentId, slot.slotIndex, paint.controllerCode, paint.rawCode) : prev));
-      if (!pendingRef.current.has(agentId)) {
-        pendingRef.current.set(agentId, new Map());
-      }
-      pendingRef.current.get(agentId)!.set(slot.slotIndex, { kind: "set", ...paint });
-    },
-    [activeTool, computePaint],
-  );
-
-  const flushPending = useCallback(async () => {
+  const flushPending = useCallback(async (): Promise<boolean> => {
     const tokenLocal = token;
     const snapshot = dataRef.current;
     if (!tokenLocal || !snapshot) {
       pendingRef.current = new Map();
-      return;
+      return true;
     }
     const batches = pendingRef.current;
     pendingRef.current = new Map();
     if (batches.size === 0) {
-      return;
+      return true;
     }
     setSaving(true);
     try {
@@ -353,46 +288,99 @@ export default function RosterDayPage() {
         tokenLocal,
       );
       setData(payload);
+      return true;
     } catch (e) {
       setStatus(toMessage(e));
       await loadProjectDay();
+      return false;
     } finally {
       setSaving(false);
     }
   }, [token, loadProjectDay]);
 
-  const clearSlotAt = useCallback(
-    async (agentId: string, slot: SlotCell) => {
-      if (!token || !dataRef.current) return;
-      if (!slot.controllerCode && !slot.rawCode) return;
-      dragRef.current = false;
-      setSaving(true);
-      try {
-        await api<{ cleared: number }>(
-          "/shiftplan/bulk-clear",
-          {
-            method: "POST",
-            body: JSON.stringify({ agentId, date: dataRef.current.date, slotIndices: [slot.slotIndex] }),
-          },
-          token,
-        );
-        await loadProjectDay();
-      } catch (e) {
-        setStatus(toMessage(e));
-        await loadProjectDay();
-      } finally {
-        setSaving(false);
+  const commitSelection = useCallback(async () => {
+    const snapshot = dataRef.current;
+    const tokenLocal = token;
+    if (!snapshot || !tokenLocal) {
+      return;
+    }
+    if (selectedKeys.size === 0) {
+      setStatus("Bitte zuerst Zellen im Raster auswählen (klicken oder in einer Zeile ziehen).");
+      return;
+    }
+
+    let next = snapshot;
+    const pending = new Map<string, Map<number, PendingOp>>();
+
+    for (const key of selectedKeys) {
+      const colon = key.indexOf(":");
+      if (colon <= 0) {
+        continue;
       }
-    },
-    [token, loadProjectDay],
-  );
+      const agentId = key.slice(0, colon);
+      const slotIndex = Number(key.slice(colon + 1));
+      if (!Number.isFinite(slotIndex)) {
+        continue;
+      }
+
+      const row = findAgentInPayload(next, agentId);
+      if (!row) {
+        continue;
+      }
+      const slot = row.slots[slotIndex];
+      if (!slot) {
+        continue;
+      }
+
+      if (activeTool.kind === "erase") {
+        if (!slot.controllerCode && !slot.rawCode) {
+          continue;
+        }
+        next = immutPatchSlot(next, agentId, slotIndex, null, null);
+        if (!pending.has(agentId)) {
+          pending.set(agentId, new Map());
+        }
+        pending.get(agentId)!.set(slotIndex, { kind: "clear" });
+        continue;
+      }
+
+      const paint = computePaint(slot);
+      if (!paint) {
+        continue;
+      }
+      if (slot.controllerCode === paint.controllerCode && slot.rawCode === paint.rawCode) {
+        continue;
+      }
+
+      next = immutPatchSlot(next, agentId, slotIndex, paint.controllerCode, paint.rawCode);
+      if (!pending.has(agentId)) {
+        pending.set(agentId, new Map());
+      }
+      pending.get(agentId)!.set(slotIndex, { kind: "set", ...paint });
+    }
+
+    if (pending.size === 0) {
+      setStatus(
+        "Keine speicherbare Änderung: z. B. „Roh spiegeln“ ohne Rohdaten, leere Zellen leeren, oder gewähltes Werkzeug ändert den Inhalt nicht.",
+      );
+      return;
+    }
+
+    setData(next);
+    pendingRef.current = pending;
+    const ok = await flushPending();
+    if (ok) {
+      setSelectedKeys(new Set());
+    }
+  }, [selectedKeys, activeTool, computePaint, token, flushPending]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedKeys(new Set());
+  }, []);
 
   useEffect(() => {
     function up() {
-      if (dragRef.current) {
-        dragRef.current = false;
-        void flushPending();
-      }
+      selectDragRef.current = null;
     }
     window.addEventListener("mouseup", up);
     window.addEventListener("blur", up);
@@ -400,28 +388,84 @@ export default function RosterDayPage() {
       window.removeEventListener("mouseup", up);
       window.removeEventListener("blur", up);
     };
-  }, [flushPending]);
+  }, []);
 
-  const onSlotEnter = useCallback(
-    (agentId: string, slot: SlotCell) => {
-      if (!dragRef.current) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") {
         return;
       }
-      paintSlot(agentId, slot);
-    },
-    [paintSlot],
-  );
-
-  const onSlotDown = useCallback(
-    (agentId: string, slot: SlotCell, e: React.MouseEvent) => {
-      if (e.button !== 0) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable=true]")) {
+        return;
+      }
+      if (selectedKeysRef.current.size === 0) {
+        return;
+      }
       e.preventDefault();
-      e.stopPropagation();
-      dragRef.current = true;
-      paintSlot(agentId, slot);
-    },
-    [paintSlot],
-  );
+      setSelectedKeys(new Set());
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const onSlotEnter = useCallback((agentId: string, slot: SlotCell) => {
+    const drag = selectDragRef.current;
+    if (!drag || drag.agentId !== agentId) {
+      return;
+    }
+    const key = `${agentId}:${slot.slotIndex}`;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  const onSlotDown = useCallback((agentId: string, slot: SlotCell, e: React.MouseEvent) => {
+    if (e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const key = `${agentId}:${slot.slotIndex}`;
+    if (e.ctrlKey || e.metaKey) {
+      selectDragRef.current = null;
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      return;
+    }
+    selectDragRef.current = { agentId };
+    if (e.shiftKey) {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+    } else {
+      setSelectedKeys(new Set([key]));
+    }
+  }, []);
+
+  const toggleSlotInSelection = useCallback((agentId: string, slot: SlotCell) => {
+    const key = `${agentId}:${slot.slotIndex}`;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   const openSlotMenu = useCallback((e: React.MouseEvent, agentId: string, slot: SlotCell, fte: number) => {
     e.preventDefault();
@@ -441,9 +485,10 @@ export default function RosterDayPage() {
       <div className="page-head">
         <h2>Schichtplanung · Tagesmatrix</h2>
         <p>
-          <strong>Raster</strong>: Linksklick ziehen (kein Markieren), Doppelklick leert eine belegte Zelle, Rechtsklick öffnet Schnellaktionen.{" "}
-          <strong>Ganzer Tag ohne seitliches Scrollen</strong>: Zeitfenster <strong>Ganzer Tag · 0–24 h</strong> wählen — die Ansicht <strong>Volle Breite</strong> schaltet sich dabei automatisch ein (Raster nutzt die volle Breite). Für größere Zellen: <strong>Große Zellen</strong> und ggf. ein kürzeres Zeitfenster. Kalender-Auswertung:{" "}
-          <strong>Schichtplan → Bericht</strong>.
+          <strong>So funktioniert das Raster</strong>: Zuerst eine oder mehrere Viertelstunden-Zellen auswählen (in einer Zeile ziehen, mit{" "}
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Strg</kbd>/
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">⌘</kbd> einzeln an- oder abwählen, mit <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Umschalt</kbd> zur bestehenden Auswahl
+          hinzufügen). Dann das gewünschte Werkzeug wählen und mit <strong>Übernehmen &amp; speichern</strong> bestätigen — erst dann wird an den Server geschrieben. <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> leert die Auswahl. Rechtsklick: Schnellaktionen. Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
@@ -483,38 +528,7 @@ export default function RosterDayPage() {
               {saving && <span className="ctrl-roster-saving">Speichern…</span>}
             </div>
             <div className="muted border-t border-border pt-2 text-xs leading-snug">{plannerHint}</div>
-            <div className="flex flex-col gap-2 border-t border-border pt-2 lg:flex-row lg:flex-wrap lg:items-end">
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground">Zeitfenster (Spalten)</span>
-                <div className="flex flex-wrap gap-1">
-                  {ROSTER_DAY_TIME_WINDOWS.map((w) => (
-                    <button
-                      key={w.id}
-                      type="button"
-                      className={timeWindow === w.id ? "rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground" : "btn-secondary rounded-md px-2.5 py-1 text-xs"}
-                      onClick={() => setTimeWindow(w.id)}
-                    >
-                      {w.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className={
-                      timeWindow === ROSTER_DAY_PROJECT_OPEN_ID
-                        ? "rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
-                        : "btn-secondary rounded-md px-2.5 py-1 text-xs"
-                    }
-                    title={`Konfiguriert im Admin (Schichtplan-Kalender): ${slotStartLabel(data.openingHours.slotStart)}–${slotStartLabel(data.openingHours.slotEnd)}`}
-                    onClick={() => setTimeWindow(ROSTER_DAY_PROJECT_OPEN_ID)}
-                  >
-                    Projekt-Öffnungszeiten
-                  </button>
-                </div>
-                <p className="max-w-xl text-[0.65rem] leading-snug text-muted-foreground">
-                  Projekt-Öffnungszeiten: Start und Ende pro Projekt unter{" "}
-                  <strong className="text-foreground">Admin → Schichtplan-Kalender</strong> (gleiche Seite wie Zielzeit &amp; Pausen).
-                </p>
-              </div>
+            <div className="flex flex-col gap-2 border-t border-border pt-2 sm:flex-row sm:flex-wrap sm:items-end">
               <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-40">
                 <span>Team</span>
                 <select value={teamFilterId} onChange={(e) => setTeamFilterId(e.target.value)}>
@@ -530,70 +544,44 @@ export default function RosterDayPage() {
                 <span>Agent suchen</span>
                 <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
               </label>
-              <div className="flex w-full min-w-[12rem] shrink-0 flex-col gap-1 sm:w-auto">
-                <span className="text-xs font-medium text-muted-foreground">Spaltenbreite</span>
-                <div
-                  className="inline-flex rounded-lg border border-border bg-muted/35 p-0.5"
-                  role="group"
-                  aria-label="Spaltenbreite: volle Breite oder feste Zellen"
-                >
-                  <button
-                    type="button"
-                    aria-pressed={fitToScreen}
-                    className={
-                      fitToScreen
-                        ? "rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
-                        : "rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
-                    }
-                    onClick={() => setFitToScreen(true)}
-                  >
-                    Volle Breite
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={!fitToScreen}
-                    className={
-                      !fitToScreen
-                        ? "rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
-                        : "rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
-                    }
-                    onClick={() => setFitToScreen(false)}
-                  >
-                    Große Zellen
-                  </button>
-                </div>
-                <span className="max-w-[20rem] text-[0.7rem] leading-snug text-muted-foreground">
-                  {fitToScreen
-                    ? "Kein horizontales Scrollen — alle sichtbaren Viertelstunden teilen sich die Breite."
-                    : "Feste Pixelbreite — bei vielen Stunden seitwärts scrollen."}
-                </span>
-              </div>
-              <label className={`ctrl-roster-field w-full min-w-[8rem] sm:w-36${fitToScreen ? " opacity-60" : ""}`}>
-                <span>Zellenbreite</span>
-                <select
-                  value={slotDensity}
-                  disabled={fitToScreen}
-                  title={fitToScreen ? "Bei „In Fensterbreite“ wird die Breite automatisch verteilt." : undefined}
-                  onChange={(e) => setSlotDensity(e.target.value as typeof slotDensity)}
-                >
-                  <option value="kompakt">Kompakt</option>
-                  <option value="normal">Normal</option>
-                  <option value="weit">Weit</option>
-                </select>
-              </label>
             </div>
           </>
         )}
       </div>
 
       {data && (
-        <div className="ctrl-roster-palette panel">
-          <div className="ctrl-roster-palette__head">
-            <span>Werkzeug (Malen)</span>
-            <label className="ctrl-roster-check">
-              <input type="checkbox" checked={preserveRaw} onChange={(e) => setPreserveRaw(e.target.checked)} />
-              Rohdaten beibehalten
-            </label>
+        <div className="ctrl-roster-palette panel stack gap-3">
+          <div className="ctrl-roster-palette__head flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">Schicht setzen (zwei Schritte)</span>
+              <span className="text-xs text-muted-foreground">
+                {selectedKeys.size === 0
+                  ? "1. Zellen markieren · 2. Werkzeug wählen · 3. Übernehmen & speichern"
+                  : `${selectedKeys.size} Zelle${selectedKeys.size === 1 ? "" : "n"} gewählt — Werkzeug wählen und bestätigen.`}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="btn-primary rounded-md px-3 py-1.5 text-sm font-medium disabled:pointer-events-none disabled:opacity-50"
+                disabled={selectedKeys.size === 0 || saving}
+                onClick={() => void commitSelection()}
+              >
+                Übernehmen &amp; speichern
+              </button>
+              <button
+                type="button"
+                className="btn-secondary rounded-md px-3 py-1.5 text-sm disabled:opacity-50"
+                disabled={selectedKeys.size === 0 || saving}
+                onClick={clearSelection}
+              >
+                Auswahl aufheben
+              </button>
+              <label className="ctrl-roster-check ml-1">
+                <input type="checkbox" checked={preserveRaw} onChange={(e) => setPreserveRaw(e.target.checked)} />
+                Roh beibehalten
+              </label>
+            </div>
           </div>
           <div className="ctrl-roster-palette__chips">
             {data.quarterHourCodes.map((c) => (
@@ -617,16 +605,16 @@ export default function RosterDayPage() {
             <button
               type="button"
               className={`ctrl-code-chip ctrl-code-chip--ghost${activeTool.kind === "mirror-raw" ? " ctrl-code-chip--active" : ""}`}
-              title="Roh in Control spiegeln (ziehen)"
+              title="Rohdaten in die Control-Spalte übernehmen (nach Auswahl mit Übernehmen)"
               onClick={() => setActiveTool({ kind: "mirror-raw" })}
             >
               <span className="ctrl-code-chip__sym">↺</span>
-              <span className="ctrl-code-chip__lbl">Roh</span>
+              <span className="ctrl-code-chip__lbl">Roh → Control</span>
             </button>
             <button
               type="button"
               className={`ctrl-code-chip ctrl-code-chip--ghost${activeTool.kind === "erase" ? " ctrl-code-chip--active" : ""}`}
-              title="Zellen leeren (ziehen) — oder Rechtsklick"
+              title="Gewählte Zellen leeren (mit Übernehmen speichern)"
               onClick={() => setActiveTool({ kind: "erase" })}
             >
               <span className="ctrl-code-chip__sym">⌫</span>
@@ -674,69 +662,46 @@ export default function RosterDayPage() {
             <div className="ctrl-roster-team__head flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="m-0">{team.teamName}</h3>
               <span className="muted text-sm">
-                {team.agents.length} Agenten · Raster {slotStartLabel(slotWindow.start)}–{slotStartLabel(slotWindow.end)} ({slotIndices.length} Viertelstunden)
+                {team.agents.length} Agenten · Raster 00:00–24:00 (96 Viertelstunden, volle Breite)
               </span>
             </div>
-            <div
-              className={`ctrl-roster-day-scroll${fitToScreen ? " ctrl-roster-day-scroll--fit" : ""}`}
-              style={{ ["--roster-slot" as string]: `${slotPx}px` } as import("react").CSSProperties}
-            >
+            <div className="ctrl-roster-day-scroll ctrl-roster-day-scroll--fit">
               <table className="roster-day-table ctrl-roster-table">
-                {fitToScreen ? (
-                  <colgroup>
-                    <col style={{ width: `${fitColPercents.agentPct}%` }} />
-                    {slotIndices.map((s) => (
-                      <col key={s} style={{ width: `${fitColPercents.slotPct}%` }} />
-                    ))}
-                  </colgroup>
-                ) : null}
+                <colgroup>
+                  <col style={{ width: `${fitColPercents.agentPct}%` }} />
+                  {slotIndices.map((s) => (
+                    <col key={s} style={{ width: `${fitColPercents.slotPct}%` }} />
+                  ))}
+                </colgroup>
                 <thead>
-                  {fitToScreen ? (
-                    <>
-                      <tr>
-                        <th rowSpan={2} className="roster-sticky-col roster-day-thead-agent">
-                          Agent
-                        </th>
-                        {hourBandGroups.map((g) => (
-                          <th
-                            key={g.key}
-                            colSpan={g.colSpan}
-                            scope="colgroup"
-                            className="roster-hour-band-head"
-                            title={`${slotStartLabel(g.startSlot)}–${slotStartLabel(g.startSlot + g.colSpan - 1)}`}
-                          >
-                            {g.label}
-                          </th>
-                        ))}
-                      </tr>
-                      <tr>
-                        {slotIndices.map((s) => (
-                          <th
-                            key={s}
-                            data-slot-head={s}
-                            className={`roster-slot-head roster-slot-subhead${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
-                            title={slotStartLabel(s)}
-                          >
-                            {s % 4 === 0 ? "" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}
-                          </th>
-                        ))}
-                      </tr>
-                    </>
-                  ) : (
-                    <tr>
-                      <th className="roster-sticky-col">Agent</th>
-                      {slotIndices.map((s) => (
-                        <th
-                          key={s}
-                          data-slot-head={s}
-                          className={`roster-slot-head${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
-                          title={slotStartLabel(s)}
-                        >
-                          {s % 4 === 0 ? (compactHourHeader ? String(Math.floor(s / 4)).padStart(2, "0") : slotStartLabel(s).slice(0, 5)) : ""}
-                        </th>
-                      ))}
-                    </tr>
-                  )}
+                  <tr>
+                    <th rowSpan={2} className="roster-sticky-col roster-day-thead-agent">
+                      Agent
+                    </th>
+                    {hourBandGroups.map((g) => (
+                      <th
+                        key={g.key}
+                        colSpan={g.colSpan}
+                        scope="colgroup"
+                        className="roster-hour-band-head"
+                        title={`${slotStartLabel(g.startSlot)}–${slotStartLabel(g.startSlot + g.colSpan - 1)}`}
+                      >
+                        {g.label}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {slotIndices.map((s) => (
+                      <th
+                        key={s}
+                        data-slot-head={s}
+                        className={`roster-slot-head roster-slot-subhead${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
+                        title={slotStartLabel(s)}
+                      >
+                        {s % 4 === 0 ? "" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}
+                      </th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {team.agents.map((row: AgentRow) => (
@@ -766,6 +731,8 @@ export default function RosterDayPage() {
                       </td>
                       {slotIndices.map((slotIndex) => {
                         const slot = row.slots[slotIndex]!;
+                        const selKey = `${row.agentId}:${slotIndex}`;
+                        const isSelected = selectedKeys.has(selKey);
                         const hasShift = !!(slot.controllerCode || slot.rawCode);
                         const cal = row.calendarDay;
                         const calHint = !!(cal && !hasShift);
@@ -777,7 +744,7 @@ export default function RosterDayPage() {
                         const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
                         const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
                           calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
-                        } · Doppelklick = leeren · Rechtsklick = Menü`;
+                        } · Klick/Ziehen = Auswahl · Strg/⌘+Klick = einzeln umschalten · Umschalt+Klick ergänzt · Enter/Leer = Umschalten · Rechtsklick = Menü`;
                         return (
                           <td
                             key={slot.slotIndex}
@@ -785,7 +752,7 @@ export default function RosterDayPage() {
                             tabIndex={0}
                             className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${
                               hasShift && !slot.agreed ? " roster-slot-warn" : ""
-                            }${calHint ? " roster-slot-cal-hint" : ""}`}
+                            }${calHint ? " roster-slot-cal-hint" : ""}${isSelected ? " roster-slot-selected" : ""}`}
                             style={{
                               background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
                               color: hasShift || calHint ? "#112033" : "#aab7c4",
@@ -793,17 +760,11 @@ export default function RosterDayPage() {
                             title={slotTitle}
                             onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
                             onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
-                            onDoubleClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              void clearSlotAt(row.agentId, slot);
-                            }}
                             onMouseEnter={() => onSlotEnter(row.agentId, slot)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
-                                paintSlot(row.agentId, slot);
-                                void flushPending();
+                                toggleSlotInSelection(row.agentId, slot);
                               }
                             }}
                           >

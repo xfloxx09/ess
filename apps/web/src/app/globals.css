@@ -514,6 +514,12 @@
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
   }
 
+  .ctrl-roster-day-scroll .roster-slot-cell.roster-slot-selected {
+    box-shadow: inset 0 0 0 2px hsl(var(--primary));
+    position: relative;
+    z-index: 1;
+  }
+
   .roster-agent-email {
     @apply text-[11px] font-normal text-muted-foreground;
   }
