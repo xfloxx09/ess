@@ -71,6 +71,23 @@ export const calendarBookRequestSchema = calendarBookingSchema.extend({
 });
 export type CalendarBookRequestDto = z.infer<typeof calendarBookRequestSchema>;
 
+/** Controlling / Schichtplanung: one calendar row for the day (no per-slot F/U in the matrix). */
+export const calendarPlannerBookRequestSchema = z.object({
+  agentId: z.string().min(1),
+  date: dateString,
+  bookingTypeId: z.string().min(1),
+  /** When true (default), clears all shiftplan cells for that agent+date after saving the booking. */
+  clearShiftplanDay: z.boolean().optional().default(true),
+  expectedVersion: z.number().int().min(1).optional(),
+});
+export type CalendarPlannerBookRequestDto = z.infer<typeof calendarPlannerBookRequestSchema>;
+
+export const calendarPlannerRemoveBookingSchema = z.object({
+  agentId: z.string().min(1),
+  date: dateString,
+});
+export type CalendarPlannerRemoveBookingDto = z.infer<typeof calendarPlannerRemoveBookingSchema>;
+
 export const calendarBatchBookingSchema = z.object({
   dates: z.array(dateString).min(1).max(40),
   bookingTypeId: z.string().min(1),

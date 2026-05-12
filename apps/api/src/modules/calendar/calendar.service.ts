@@ -1,13 +1,16 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
 import type { CalendarBatchBookingDto, CalendarBookingDto, ShiftBlock } from "@ess/shared";
 import { PrismaService } from "../../common/prisma.service";
+import type { RequestUser } from "../../common/authz.types";
 import { ShiftplanBookingRulesService } from "../shiftplan-booking-rules/shiftplan-booking-rules.service";
+import { ShiftplanService } from "../shiftplan/shiftplan.service";
 
 @Injectable()
 export class CalendarService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookingRules: ShiftplanBookingRulesService,
+    private readonly shiftplan: ShiftplanService,
   ) {}
 
   listActiveBookingTypes() {
@@ -81,6 +84,111 @@ export class CalendarService {
       where: { agentId, date: { startsWith: month } },
       orderBy: { date: "asc" },
     });
+  }
+
+  /**
+   * Urlaub / Frei / Krank usw. als **eine** Kalenderzeile pro Tag — ohne Agenten-Vorlauf- und Buchungsfenster-Prüfungen.
+   * Optional werden alle Schichtplan-Zellen des Tages geleert (kein F/U in jedem Viertelstundenfeld).
+   */
+  async bookForPlanner(
+    actor: RequestUser,
+    input: { agentId: string; date: string; bookingTypeId: string; clearShiftplanDay?: boolean; expectedVersion?: number },
+  ) {
+    await this.assertPlannerMaySetBooking(actor, input.agentId);
+    const bookingType = await this.prisma.bookingType.findFirst({
+      where: { id: input.bookingTypeId, active: true },
+    });
+    if (!bookingType) throw new BadRequestException("Buchungsart nicht gefunden oder inaktiv.");
+    if (!plannerBookingAllowsEmptyBlocks(bookingType)) {
+      throw new BadRequestException(
+        "Diese Buchungsart braucht Uhrzeit-Blöcke (z. B. Früh/Spät). Bitte im Agenten-Kalender buchen oder Blöcke später ergänzen.",
+      );
+    }
+
+    const dto: CalendarBookingDto = { date: input.date, bookingTypeId: input.bookingTypeId, blocks: [] };
+    const existing = await this.prisma.calendarBooking.findUnique({
+      where: { agentId_date: { agentId: input.agentId, date: dto.date } },
+    });
+    if (existing) {
+      if (input.expectedVersion !== undefined && input.expectedVersion !== existing.version) {
+        throw new ConflictException("Booking was changed by another update. Reload and retry.");
+      }
+      const updated = await this.prisma.calendarBooking.update({
+        where: { id: existing.id },
+        data: { bookingTypeId: dto.bookingTypeId, blocks: dto.blocks, version: { increment: 1 } },
+      });
+      await this.prisma.calendarHistory.create({
+        data: {
+          bookingId: updated.id,
+          agentId: updated.agentId,
+          date: updated.date,
+          action: "UPSERT",
+          version: updated.version,
+          payload: { bookingTypeId: updated.bookingTypeId, blocks: dto.blocks, source: "planner" },
+        },
+      });
+      await this.maybeClearShiftplanDay(actor, input.agentId, dto.date, input.clearShiftplanDay !== false);
+      return updated;
+    }
+    const created = await this.prisma.calendarBooking.create({
+      data: { agentId: input.agentId, date: dto.date, bookingTypeId: dto.bookingTypeId, blocks: dto.blocks, version: 1 },
+    });
+    await this.prisma.calendarHistory.create({
+      data: {
+        bookingId: created.id,
+        agentId: input.agentId,
+        date: dto.date,
+        action: "UPSERT",
+        version: 1,
+        payload: { bookingTypeId: dto.bookingTypeId, blocks: dto.blocks, source: "planner" },
+      },
+    });
+    await this.maybeClearShiftplanDay(actor, input.agentId, dto.date, input.clearShiftplanDay !== false);
+    return created;
+  }
+
+  async removePlannerBooking(actor: RequestUser, input: { agentId: string; date: string }) {
+    await this.assertPlannerMaySetBooking(actor, input.agentId);
+    const target = await this.prisma.calendarBooking.findUnique({
+      where: { agentId_date: { agentId: input.agentId, date: input.date } },
+    });
+    if (!target) return { removed: 0 };
+    await this.prisma.calendarHistory.create({
+      data: {
+        bookingId: target.id,
+        agentId: input.agentId,
+        date: input.date,
+        action: "DELETE",
+        version: target.version,
+        payload: { bookingTypeId: target.bookingTypeId, blocks: target.blocks ?? [], source: "planner" },
+      },
+    });
+    await this.prisma.calendarBooking.delete({ where: { id: target.id } });
+    return { removed: 1 };
+  }
+
+  private async maybeClearShiftplanDay(actor: RequestUser, agentId: string, date: string, doClear: boolean) {
+    if (!doClear) return;
+    const all = Array.from({ length: 96 }, (_, i) => i);
+    await this.shiftplan.bulkClearSlots({ agentId, date, slotIndices: all }, actor);
+  }
+
+  private async assertPlannerMaySetBooking(actor: RequestUser, agentId: string) {
+    if (actor.role === "ADMIN") return;
+    if (actor.role !== "CONTROLLING" && actor.role !== "SCHICHTPLANUNG") {
+      throw new ForbiddenException("Nur Controlling, Schichtplanung oder Admin.");
+    }
+    const agent = await this.prisma.user.findUnique({
+      where: { id: agentId },
+      select: { role: true, teamId: true },
+    });
+    if (!agent || agent.role !== "AGENT") throw new BadRequestException("Nur für Agenten-Kalender.");
+    if (!agent.teamId) throw new ForbiddenException("Agent ohne Team.");
+    const team = await this.prisma.team.findUnique({ where: { id: agent.teamId }, select: { projectId: true } });
+    if (!team) throw new ForbiddenException("Team nicht gefunden.");
+    if (actor.allowedProjectIds && !actor.allowedProjectIds.includes(team.projectId)) {
+      throw new ForbiddenException("Projekt für dieses Konto nicht freigeschaltet.");
+    }
   }
 
   async removeMine(agentId: string, date: string, expectedVersion?: number) {
@@ -186,6 +294,13 @@ export class CalendarService {
       throw new BadRequestException("Current month is locked for this booking type");
     }
   }
+}
+
+function plannerBookingAllowsEmptyBlocks(bt: { category: string; code: string; allowsSplitShift: boolean }): boolean {
+  if (bt.allowsSplitShift) return false;
+  if (bt.category === "VACATION" || bt.category === "SICK") return true;
+  if (bt.category === "SHIFT" && !["FR", "SN", "SPLIT"].includes(bt.code)) return true;
+  return false;
 }
 
 function hoursBetween(start: string, end: string): number {

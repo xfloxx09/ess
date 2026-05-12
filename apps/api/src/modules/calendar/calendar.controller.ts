@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
-import { calendarBatchBookingSchema, calendarBookRequestSchema } from "@ess/shared";
-import type { CalendarBatchBookingDto, CalendarBookRequestDto } from "@ess/shared";
+import { calendarBatchBookingSchema, calendarBookRequestSchema, calendarPlannerBookRequestSchema, calendarPlannerRemoveBookingSchema } from "@ess/shared";
+import type { CalendarBatchBookingDto, CalendarBookRequestDto, CalendarPlannerBookRequestDto, CalendarPlannerRemoveBookingDto } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import { AuditService } from "../audit/audit.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -31,6 +31,23 @@ export class CalendarController {
   async bookBatch(@Req() req: { user: RequestUser }, @Body(Body$(calendarBatchBookingSchema)) dto: CalendarBatchBookingDto) {
     const result = await this.calendar.bookBatch(req.user.id, dto);
     await this.audit.log(req.user.id, "CREATE", "calendar.booking.batch", null, { count: result.length });
+    return result;
+  }
+
+  @Post("planner-book")
+  @Roles("ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
+  async plannerBook(@Req() req: { user: RequestUser }, @Body(Body$(calendarPlannerBookRequestSchema)) dto: CalendarPlannerBookRequestDto) {
+    const { expectedVersion, ...rest } = dto;
+    const booking = await this.calendar.bookForPlanner(req.user, { ...rest, expectedVersion });
+    await this.audit.log(req.user.id, "UPSERT", "calendar.planner-book", booking.id, dto);
+    return booking;
+  }
+
+  @Post("planner-remove-booking")
+  @Roles("ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
+  async plannerRemoveBooking(@Req() req: { user: RequestUser }, @Body(Body$(calendarPlannerRemoveBookingSchema)) dto: CalendarPlannerRemoveBookingDto) {
+    const result = await this.calendar.removePlannerBooking(req.user, dto);
+    await this.audit.log(req.user.id, "DELETE", "calendar.planner-remove-booking", null, dto);
     return result;
   }
 

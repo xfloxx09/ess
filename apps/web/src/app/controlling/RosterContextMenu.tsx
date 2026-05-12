@@ -7,6 +7,15 @@ import { toMessage } from "../../lib/auth";
 import type { PauseSeg, RosterProjectPayload } from "./roster-shared";
 import { buildFteSlots, findAgentInPayload, slotIndexToTimeString, timeToSlotIndex } from "./roster-shared";
 
+type PlannerBookingTypeRow = { id: string; code: string; label: string; category: string; allowsSplitShift: boolean };
+
+function isPlannerWholeDayBookingType(bt: PlannerBookingTypeRow): boolean {
+  if (bt.allowsSplitShift) return false;
+  if (bt.category === "VACATION" || bt.category === "SICK") return true;
+  if (bt.category === "SHIFT" && !["FR", "SN", "SPLIT"].includes(bt.code)) return true;
+  return false;
+}
+
 export type RosterMenuTarget =
   | { scope: "day-slot"; agentId: string; slotIndex: number; fte: number }
   | { scope: "month-cell"; agentId: string; date: string };
@@ -56,6 +65,23 @@ export function RosterContextMenu({
   const [err, setErr] = useState("");
   const [loadedPlanner, setLoadedPlanner] = useState<{ targetDayMinutes: number; pausePattern: PauseSeg[] } | null>(null);
   const [loadedFte, setLoadedFte] = useState<number | null>(null);
+  const [plannerBookingTypes, setPlannerBookingTypes] = useState<PlannerBookingTypeRow[] | null>(null);
+
+  useEffect(() => {
+    if (!open || !token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await api<PlannerBookingTypeRow[]>("/calendar/booking-types", undefined, token);
+        if (!cancelled) setPlannerBookingTypes(rows.filter(isPlannerWholeDayBookingType));
+      } catch {
+        if (!cancelled) setPlannerBookingTypes([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token]);
 
   useEffect(() => {
     if (!open || !target) return;
@@ -250,13 +276,42 @@ export function RosterContextMenu({
     });
   };
 
+  const plannerSetWholeDayBooking = (bookingTypeId: string) => {
+    const aid = target.agentId;
+    void run(async () => {
+      await api("/calendar/planner-book", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: aid,
+          date: workDate,
+          bookingTypeId,
+          clearShiftplanDay: true,
+        }),
+        token,
+      });
+    });
+  };
+
+  const plannerRemoveCalendarDay = () => {
+    const aid = target.agentId;
+    void run(async () => {
+      await api("/calendar/planner-remove-booking", {
+        method: "POST",
+        body: JSON.stringify({ agentId: aid, date: workDate }),
+        token,
+      });
+    });
+  };
+
   const menuStyle: CSSProperties = {
     position: "fixed",
-    left: Math.min(x, typeof window !== "undefined" ? window.innerWidth - 280 : x),
-    top: Math.min(y, typeof window !== "undefined" ? window.innerHeight - 320 : y),
+    left: Math.min(x, typeof window !== "undefined" ? window.innerWidth - 300 : x),
+    top: Math.min(y, typeof window !== "undefined" ? window.innerHeight - 360 : y),
     zIndex: 2000,
     minWidth: 220,
-    maxWidth: 280,
+    maxWidth: 300,
+    maxHeight: "min(70vh, 420px)",
+    overflowY: "auto",
   };
 
   return (
@@ -296,6 +351,31 @@ export function RosterContextMenu({
       </button>
       <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => clearFullDayAgent()}>
         Ganzen Tag für diesen Agenten leeren
+      </button>
+      <div className="px-2 pt-1 text-[0.65rem] font-medium text-muted-foreground">Kalender (ganzer Tag)</div>
+      <p className="px-2 pb-1 text-[0.6rem] leading-snug text-muted-foreground">
+        Zählt als <strong className="text-foreground">ein Tag</strong> (Kalenderbuchung). Leert die Schichtplan-Zellen für diesen Tag — keine Codes in jedem Viertelstundenfeld.
+      </p>
+      {plannerBookingTypes === null ? (
+        <p className="muted px-2 py-1 text-xs">Lade Buchungsarten…</p>
+      ) : plannerBookingTypes.length === 0 ? (
+        <p className="muted px-2 py-1 text-xs">Keine ganztägigen Buchungsarten.</p>
+      ) : (
+        plannerBookingTypes.map((bt) => (
+          <button
+            key={bt.id}
+            type="button"
+            className="roster-ctx-item"
+            disabled={busy}
+            title={`${bt.label} (${bt.code})`}
+            onClick={() => plannerSetWholeDayBooking(bt.id)}
+          >
+            {bt.label}
+          </button>
+        ))
+      )}
+      <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => plannerRemoveCalendarDay()}>
+        Kalenderbuchung für Tag entfernen
       </button>
       <hr className="roster-ctx-hr" />
       {sub === "none" && (
