@@ -30,6 +30,8 @@ export type RosterMenuTarget =
   | { scope: "day-slot"; agentId: string; slotIndex: number; fte: number }
   | { scope: "month-cell"; agentId: string; date: string };
 
+export type MonthBulkCell = { agentId: string; date: string };
+
 type Props = {
   token: string;
   open: boolean;
@@ -50,6 +52,8 @@ type Props = {
   extraActions?: ReactNode;
   /** Ganztägige Kalender-Buchungsarten (von der Seite vorgeladen). */
   wholeDayBookingTypesState: { loaded: boolean; types: PlannerCalendarBookingTypeRow[]; error: string | null };
+  /** Monatsansicht: mehrere Zellen — Aktionen nacheinander auf alle anwenden (Rechtsklick mit Auswahl). */
+  monthBulkTargets?: MonthBulkCell[];
 };
 
 export function RosterContextMenu({
@@ -67,6 +71,7 @@ export function RosterContextMenu({
   onDone,
   extraActions,
   wholeDayBookingTypesState,
+  monthBulkTargets,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<"none" | "copyDay" | "copyMonth">("none");
@@ -76,8 +81,6 @@ export function RosterContextMenu({
   const [fteTime, setFteTime] = useState("08:00");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [loadedPlanner, setLoadedPlanner] = useState<{ targetDayMinutes: number; pausePattern: PauseSeg[] } | null>(null);
-  const [loadedFte, setLoadedFte] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open || !target) return;
@@ -96,35 +99,7 @@ export function RosterContextMenu({
     } else {
       setFteTime("08:00");
     }
-    setLoadedPlanner(null);
-    setLoadedFte(null);
   }, [open, target, date]);
-
-  useEffect(() => {
-    if (!open || !target || target.scope !== "month-cell") return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const p = await api<RosterProjectPayload>(
-          `/shiftplan/roster-day-project?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(target.date)}`,
-          undefined,
-          token,
-        );
-        if (cancelled) return;
-        const ag = findAgentInPayload(p, target.agentId);
-        setLoadedPlanner(p.planner);
-        setLoadedFte(ag?.fte ?? 1);
-      } catch {
-        if (!cancelled) {
-          setLoadedPlanner({ targetDayMinutes: 480, pausePattern: [] });
-          setLoadedFte(1);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, target, projectId, token]);
 
   useEffect(() => {
     if (!open) return;
@@ -179,12 +154,26 @@ export function RosterContextMenu({
     return out;
   }, [wholeDayBookingTypesState.types]);
 
+  const monthOpTargets = useMemo((): MonthBulkCell[] => {
+    if (!open || !target || target.scope !== "month-cell") return [];
+    const raw = monthBulkTargets?.length ? monthBulkTargets : [{ agentId: target.agentId, date: target.date }];
+    const seen = new Set<string>();
+    const out: MonthBulkCell[] = [];
+    for (const c of raw) {
+      const k = `${c.agentId}|${c.date}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(c);
+    }
+    return out;
+  }, [open, target, monthBulkTargets]);
+
   if (!open || !target) return null;
 
   const workDate = target.scope === "month-cell" ? target.date : date;
-  const effectivePlanner = target.scope === "day-slot" ? planner! : loadedPlanner;
-  const effectiveFte = target.scope === "day-slot" ? (fteProp ?? 1) : loadedFte;
-  const monthMetaLoading = target.scope === "month-cell" && (!effectivePlanner || loadedFte === null);
+  const effectivePlanner = target.scope === "day-slot" ? planner! : null;
+  const effectiveFte = target.scope === "day-slot" ? (fteProp ?? 1) : null;
+  const monthBulkCount = target.scope === "month-cell" ? monthOpTargets.length : 0;
 
   const clearThisSlot = () => {
     if (target.scope !== "day-slot") return;
@@ -217,40 +206,92 @@ export function RosterContextMenu({
   };
 
   const fteFillThisAgent = () => {
-    if (monthMetaLoading || !effectivePlanner || effectiveFte === null) return;
-    const start = target.scope === "day-slot" ? target.slotIndex : timeToSlotIndex(fteTime);
-    if (start === null) {
+    if (target.scope === "day-slot") {
+      if (!effectivePlanner || effectiveFte === null) return;
+      const start = target.slotIndex;
+      const aid = target.agentId;
+      void run(async () => {
+        const built = buildFteSlots({
+          fte: effectiveFte,
+          targetDayMinutes: effectivePlanner.targetDayMinutes,
+          pausePattern: effectivePlanner.pausePattern,
+          startSlot: start,
+        });
+        if (built.length === 0) return;
+        const from = start;
+        const to = built[built.length - 1]!.slotIndex;
+        const clearIdx: number[] = [];
+        for (let s = from; s <= to; s++) clearIdx.push(s);
+        await api("/shiftplan/bulk-clear", {
+          method: "POST",
+          body: JSON.stringify({ agentId: aid, date: workDate, slotIndices: clearIdx }),
+          token,
+        });
+        const slots = built.map((b) => ({ slotIndex: b.slotIndex, controllerCode: b.code, rawCode: b.code }));
+        await api("/shiftplan/bulk", {
+          method: "POST",
+          body: JSON.stringify({ agentId: aid, date: workDate, slots }),
+          token,
+        });
+      });
+      return;
+    }
+    const startSlot = timeToSlotIndex(fteTime);
+    if (startSlot === null) {
       setErr("Startzeit in 15-Min-Schritten (HH:MM).");
       return;
     }
-    const aid = target.agentId;
+    if (monthOpTargets.length === 0) return;
     void run(async () => {
-      const built = buildFteSlots({
-        fte: effectiveFte,
-        targetDayMinutes: effectivePlanner.targetDayMinutes,
-        pausePattern: effectivePlanner.pausePattern,
-        startSlot: start,
-      });
-      if (built.length === 0) return;
-      const from = start;
-      const to = built[built.length - 1]!.slotIndex;
-      const clearIdx: number[] = [];
-      for (let s = from; s <= to; s++) clearIdx.push(s);
-      await api("/shiftplan/bulk-clear", {
-        method: "POST",
-        body: JSON.stringify({ agentId: aid, date: workDate, slotIndices: clearIdx }),
-        token,
-      });
-      const slots = built.map((b) => ({ slotIndex: b.slotIndex, controllerCode: b.code, rawCode: b.code }));
-      await api("/shiftplan/bulk", {
-        method: "POST",
-        body: JSON.stringify({ agentId: aid, date: workDate, slots }),
-        token,
-      });
+      for (const cell of monthOpTargets) {
+        const p = await api<RosterProjectPayload>(
+          `/shiftplan/roster-day-project?projectId=${encodeURIComponent(projectId)}&date=${encodeURIComponent(cell.date)}`,
+          undefined,
+          token,
+        );
+        const ag = findAgentInPayload(p, cell.agentId);
+        if (!ag) continue;
+        const fte = ag.fte ?? 1;
+        const built = buildFteSlots({
+          fte,
+          targetDayMinutes: p.planner.targetDayMinutes,
+          pausePattern: p.planner.pausePattern,
+          startSlot: startSlot,
+        });
+        if (built.length === 0) continue;
+        const from = startSlot;
+        const to = built[built.length - 1]!.slotIndex;
+        const clearIdx: number[] = [];
+        for (let s = from; s <= to; s++) clearIdx.push(s);
+        await api("/shiftplan/bulk-clear", {
+          method: "POST",
+          body: JSON.stringify({ agentId: cell.agentId, date: cell.date, slotIndices: clearIdx }),
+          token,
+        });
+        const slots = built.map((b) => ({ slotIndex: b.slotIndex, controllerCode: b.code, rawCode: b.code }));
+        await api("/shiftplan/bulk", {
+          method: "POST",
+          body: JSON.stringify({ agentId: cell.agentId, date: cell.date, slots }),
+          token,
+        });
+      }
     });
   };
 
   const clearFullDayAgent = () => {
+    if (target.scope === "month-cell") {
+      void run(async () => {
+        const all = Array.from({ length: 96 }, (_, i) => i);
+        for (const cell of monthOpTargets) {
+          await api("/shiftplan/bulk-clear", {
+            method: "POST",
+            body: JSON.stringify({ agentId: cell.agentId, date: cell.date, slotIndices: all }),
+            token,
+          });
+        }
+      });
+      return;
+    }
     const aid = target.agentId;
     void run(async () => {
       const all = Array.from({ length: 96 }, (_, i) => i);
@@ -291,6 +332,23 @@ export function RosterContextMenu({
   };
 
   const plannerSetWholeDayBooking = (bookingTypeId: string) => {
+    if (target.scope === "month-cell") {
+      void run(async () => {
+        for (const cell of monthOpTargets) {
+          await api("/calendar/planner-book", {
+            method: "POST",
+            body: JSON.stringify({
+              agentId: cell.agentId,
+              date: cell.date,
+              bookingTypeId,
+              clearShiftplanDay: true,
+            }),
+            token,
+          });
+        }
+      });
+      return;
+    }
     const aid = target.agentId;
     void run(async () => {
       await api("/calendar/planner-book", {
@@ -307,6 +365,18 @@ export function RosterContextMenu({
   };
 
   const plannerRemoveCalendarDay = () => {
+    if (target.scope === "month-cell") {
+      void run(async () => {
+        for (const cell of monthOpTargets) {
+          await api("/calendar/planner-remove-booking", {
+            method: "POST",
+            body: JSON.stringify({ agentId: cell.agentId, date: cell.date }),
+            token,
+          });
+        }
+      });
+      return;
+    }
     const aid = target.agentId;
     void run(async () => {
       await api("/calendar/planner-remove-booking", {
@@ -336,13 +406,13 @@ export function RosterContextMenu({
         </p>
       ) : null}
 
-      {extraActions ? <CtxSection title="Aktion">{extraActions}</CtxSection> : null}
-
-      {monthMetaLoading ? (
-        <div className="px-2 py-1">
-          <p className="muted text-xs">Lade Plan…</p>
-        </div>
+      {monthBulkCount > 1 ? (
+        <p className="m-0 px-2 pb-1 text-[0.65rem] leading-snug text-muted-foreground">
+          Mehrfachauswahl: <strong className="text-foreground">{monthBulkCount}</strong> Tage — Schicht leeren, FTE-Schicht und Kalender gelten für alle markierten Felder. Tag-/Monat kopieren nur bei einer Zelle.
+        </p>
       ) : null}
+
+      {extraActions ? <CtxSection title="Aktion">{extraActions}</CtxSection> : null}
 
       {target.scope === "day-slot" ? (
         <CtxSection title="Diese Zelle" hint="Nur die gewählte Viertelstunde.">
@@ -368,7 +438,11 @@ export function RosterContextMenu({
         <button
           type="button"
           className="roster-ctx-item"
-          disabled={busy || monthMetaLoading}
+          disabled={
+            busy ||
+            (target.scope === "day-slot" && (!effectivePlanner || effectiveFte === null)) ||
+            (target.scope === "month-cell" && monthOpTargets.length === 0)
+          }
           title={
             target.scope === "day-slot"
               ? "Füllt Arbeit und Pause gemäß FTE-Soll ab dieser Viertelstunde."
@@ -420,10 +494,22 @@ export function RosterContextMenu({
       <CtxSection title="Projekt kopieren" hint="Alle Agenten des Projekts (Schichtplan-Daten).">
         {sub === "none" ? (
           <>
-            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyDay")}>
+            <button
+              type="button"
+              className="roster-ctx-item"
+              disabled={busy || (target.scope === "month-cell" && monthBulkCount > 1)}
+              title={target.scope === "month-cell" && monthBulkCount > 1 ? "Nur bei einer markierten Zelle verfügbar." : undefined}
+              onClick={() => setSub("copyDay")}
+            >
               Tag kopieren…
             </button>
-            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyMonth")}>
+            <button
+              type="button"
+              className="roster-ctx-item"
+              disabled={busy || (target.scope === "month-cell" && monthBulkCount > 1)}
+              title={target.scope === "month-cell" && monthBulkCount > 1 ? "Nur bei einer markierten Zelle verfügbar." : undefined}
+              onClick={() => setSub("copyMonth")}
+            >
               Monat kopieren…
             </button>
           </>

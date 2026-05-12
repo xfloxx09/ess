@@ -431,6 +431,27 @@
   .roster-scroll table {
     @apply w-max border-collapse text-xs;
   }
+  .roster-scroll.roster-scroll--month-fit {
+    @apply w-full max-w-full overflow-x-hidden;
+  }
+  .roster-scroll--month-fit .roster-month-table {
+    @apply w-full table-fixed border-collapse text-[0.7rem];
+  }
+  .roster-scroll--month-fit thead th.roster-sticky-col,
+  .roster-scroll--month-fit tbody td.roster-sticky-col {
+    width: min(11rem, 22vw);
+    min-width: 7.5rem;
+    max-width: 12rem;
+  }
+  .roster-scroll--month-fit .roster-month-dayhead {
+    @apply min-w-0 border-b border-r border-border/60 bg-muted/40 px-0.5 py-1.5 text-center text-[0.62rem] font-semibold leading-none text-muted-foreground;
+  }
+  .roster-scroll--month-fit .roster-month-cell {
+    @apply min-h-[1.5rem] min-w-0 border-r border-border/50 px-0 py-0.5 text-[0.65rem];
+  }
+  .roster-month-cell.roster-month-cell--selected {
+    @apply ring-2 ring-primary ring-inset;
+  }
   .roster-sticky-col {
     @apply sticky left-0 z-10 min-w-[180px] border-r border-border bg-card px-3 py-2 text-left font-medium;
   }

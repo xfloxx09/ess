@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterAgentDayModal } from "../RosterAgentDayModal";
-import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
+import { RosterContextMenu, type MonthBulkCell, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
 
 type Project = { id: string; name: string };
@@ -31,9 +31,19 @@ type MenuState = {
   y: number;
   target: RosterMenuTarget;
   agentLabel: string;
-} | null;
+  monthBulkTargets: MonthBulkCell[];
+};
 
 type ModalState = { agentId: string; agentLabel: string; date: string } | null;
+
+function monthCellSelKey(agentId: string, date: string): string {
+  return `${agentId}|${date}`;
+}
+
+function parseMonthSelKey(key: string): MonthBulkCell {
+  const i = key.indexOf("|");
+  return { agentId: key.slice(0, i), date: key.slice(i + 1) };
+}
 
 export default function RosterMonthPage() {
   const { token, loading } = useRequireAuth({
@@ -46,8 +56,11 @@ export default function RosterMonthPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [data, setData] = useState<RosterMonthPayload | null>(null);
   const [status, setStatus] = useState("Projekt wählen und Monatsplan laden.");
-  const [menu, setMenu] = useState<MenuState>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const [selectedMonthKeys, setSelectedMonthKeys] = useState<Set<string>>(() => new Set());
+  const selectedMonthRef = useRef(selectedMonthKeys);
+  selectedMonthRef.current = selectedMonthKeys;
 
   const loadProjects = useCallback(() => {
     if (!token) {
@@ -83,6 +96,37 @@ export default function RosterMonthPage() {
 
   const dayNumbers = useMemo(() => data?.dates.map((d) => d.slice(-2)) ?? [], [data]);
 
+  const sortedTeams = useMemo(() => {
+    if (!data) return [];
+    return data.teams.map((t) => ({
+      ...t,
+      agents: [...t.agents].sort((a, b) => a.fullName.localeCompare(b.fullName, "de", { sensitivity: "base" })),
+    }));
+  }, [data]);
+
+  useEffect(() => {
+    setSelectedMonthKeys(new Set());
+  }, [projectId, month, data?.dates]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") {
+        return;
+      }
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable=true]")) {
+        return;
+      }
+      if (selectedMonthRef.current.size === 0) {
+        return;
+      }
+      e.preventDefault();
+      setSelectedMonthKeys(new Set());
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (loading) {
     return <p className="status-ok">Lade Monatsplan…</p>;
   }
@@ -93,12 +137,13 @@ export default function RosterMonthPage() {
         <h2>Monatsschichtplan</h2>
         <p>
           Pro Tag ein Kästchen: <strong>grün</strong> = A, <strong>grau</strong> = leer, <strong>gelb</strong> = ohne A, <strong>rand rot</strong> =
-          Abweichungen. <strong>Linksklick</strong> öffnet die Tageszeile zum Bearbeiten. <strong>Rechtsklick</strong>: Schnellmenü (FTE, kopieren,
-          Tag leeren). Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
+          Abweichungen. <strong>Strg</strong>/<strong>⌘</strong>+Klick markiert mehrere Tage; Rechtsklick wendet Schicht/Kalender auf alle Markierten an.{" "}
+          <strong>Linksklick</strong> (ohne Strg) öffnet die Tagesmatrix. Die Tabelle nutzt die volle Breite — kein horizontales Scrollen für den Monat.{" "}
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> hebt die Markierung auf. Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
-      <div className="panel row">
+      <div className="panel row flex-wrap items-end gap-3">
         <label>
           Projekt
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
@@ -116,6 +161,16 @@ export default function RosterMonthPage() {
         <button type="button" onClick={loadMonth}>
           Plan laden
         </button>
+        {selectedMonthKeys.size > 0 ? (
+          <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              <strong className="text-foreground">{selectedMonthKeys.size}</strong> Tag(e) markiert
+            </span>
+            <button type="button" className="rounded-md border border-border bg-muted/50 px-2 py-1 text-xs hover:bg-muted" onClick={() => setSelectedMonthKeys(new Set())}>
+              Auswahl leeren
+            </button>
+          </span>
+        ) : null}
       </div>
 
       <p className={status.includes("geladen") ? "status-ok" : "status-bad"}>{status}</p>
@@ -133,7 +188,11 @@ export default function RosterMonthPage() {
           planner={undefined}
           fte={undefined}
           data={null}
-          onDone={loadMonth}
+          onDone={async () => {
+            await loadMonth();
+            setSelectedMonthKeys(new Set());
+          }}
+          monthBulkTargets={menu.monthBulkTargets}
           wholeDayBookingTypesState={{
             loaded: plannerWholeDay.loaded,
             types: plannerWholeDay.types,
@@ -143,6 +202,8 @@ export default function RosterMonthPage() {
             <button
               type="button"
               className="roster-ctx-item roster-ctx-primary"
+              disabled={menu.monthBulkTargets.length > 1}
+              title={menu.monthBulkTargets.length > 1 ? "Nur bei einer Zelle (ohne Mehrfachauswahl)." : undefined}
               onClick={() => {
                 if (menu.target.scope !== "month-cell") return;
                 setModal({ agentId: menu.target.agentId, date: menu.target.date, agentLabel: `${menu.agentLabel} · ${menu.target.date}` });
@@ -175,12 +236,12 @@ export default function RosterMonthPage() {
       )}
 
       {data &&
-        data.teams.map((team) => (
+        sortedTeams.map((team) => (
           <div key={team.teamId} className="panel">
             <h3>
               {team.teamName} <span className="pill">{data.projectName}</span>
             </h3>
-            <div className="roster-scroll">
+            <div className="roster-scroll roster-scroll--month-fit">
               <table className="roster-month-table">
                 <thead>
                   <tr>
@@ -213,24 +274,46 @@ export default function RosterMonthPage() {
                         if (d.disagreedSlots > 0) {
                           cls += " roster-month-disagree";
                         }
-                        const title = `${d.date} — Linksklick: bearbeiten · Rechtsklick: Menü`;
+                        const key = monthCellSelKey(agent.agentId, d.date);
+                        if (selectedMonthKeys.has(key)) {
+                          cls += " roster-month-cell--selected";
+                        }
+                        const title = `${d.date} — Linksklick: Matrix · Strg+Klick: markieren · Rechtsklick: Menü (Mehrfach)`;
                         return (
                           <td key={d.date} className="roster-month-cell-wrap">
                             <button
                               type="button"
                               className={cls}
                               title={title}
-                              onClick={() =>
-                                setModal({ agentId: agent.agentId, date: d.date, agentLabel: `${agent.fullName} · ${d.date}` })
-                              }
+                              onClick={(e) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                  e.preventDefault();
+                                  setSelectedMonthKeys((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(key)) {
+                                      next.delete(key);
+                                    } else {
+                                      next.add(key);
+                                    }
+                                    return next;
+                                  });
+                                  return;
+                                }
+                                setSelectedMonthKeys(new Set());
+                                setModal({ agentId: agent.agentId, date: d.date, agentLabel: `${agent.fullName} · ${d.date}` });
+                              }}
                               onContextMenu={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                const refSet = selectedMonthRef.current;
+                                const bulk: MonthBulkCell[] =
+                                  refSet.size > 0 && refSet.has(key) ? [...refSet].map(parseMonthSelKey) : [{ agentId: agent.agentId, date: d.date }];
                                 setMenu({
                                   x: e.clientX,
                                   y: e.clientY,
                                   target: { scope: "month-cell", agentId: agent.agentId, date: d.date },
                                   agentLabel: agent.fullName,
+                                  monthBulkTargets: bulk,
                                 });
                               }}
                             >
