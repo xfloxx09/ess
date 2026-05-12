@@ -281,8 +281,18 @@ export function RosterContextMenu({
           <input type="time" step={900} value={fteTime} onChange={(e) => setFteTime(e.target.value)} disabled={busy} />
         </div>
       )}
-      <button type="button" className="roster-ctx-item" disabled={busy || monthMetaLoading} onClick={() => fteFillThisAgent()}>
-        A + P (FTE) {target.scope === "day-slot" ? "ab hier" : "für diesen Tag"}
+      <button
+        type="button"
+        className="roster-ctx-item"
+        disabled={busy || monthMetaLoading}
+        title={
+          target.scope === "day-slot"
+            ? "Füllt Arbeit und Pause gemäß FTE-Soll ab dieser Viertelstunde."
+            : "Füllt Arbeit und Pause gemäß FTE-Soll für diesen Tag (Startzeit oben einstellbar)."
+        }
+        onClick={() => fteFillThisAgent()}
+      >
+        Schicht hinzufügen
       </button>
       <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => clearFullDayAgent()}>
         Ganzen Tag für diesen Agenten leeren

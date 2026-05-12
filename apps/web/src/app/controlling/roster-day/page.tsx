@@ -137,6 +137,27 @@ export default function RosterDayPage() {
 
   const compactHourHeader = slotIndices.length >= 40;
 
+  const hourBandGroups = useMemo(() => {
+    const indices = slotIndices;
+    const groups: { key: string; startSlot: number; colSpan: number; label: string }[] = [];
+    let i = 0;
+    while (i < indices.length) {
+      const s0 = indices[i]!;
+      const h = Math.floor(s0 / 4);
+      let j = i + 1;
+      while (j < indices.length && Math.floor(indices[j]! / 4) === h) {
+        j += 1;
+      }
+      const colSpan = j - i;
+      const endSlot = indices[j - 1]!;
+      const fullHourVisible = s0 === h * 4 && endSlot === h * 4 + 3;
+      const label = fullHourVisible ? slotStartLabel(s0).slice(0, 5) : `${slotStartLabel(s0)}–${slotStartLabel(endSlot)}`;
+      groups.push({ key: `band-${s0}`, startSlot: s0, colSpan, label });
+      i = j;
+    }
+    return groups;
+  }, [slotIndices]);
+
   const stats = useMemo(() => {
     if (!data) {
       return { agents: 0, disagree: 0, teams: 0 };
@@ -639,23 +660,52 @@ export default function RosterDayPage() {
                   </colgroup>
                 ) : null}
                 <thead>
-                  <tr>
-                    <th className="roster-sticky-col">Agent</th>
-                    {slotIndices.map((s) => (
-                      <th
-                        key={s}
-                        data-slot-head={s}
-                        className={`roster-slot-head${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
-                        title={slotStartLabel(s)}
-                      >
-                        {s % 4 === 0
-                          ? compactHourHeader
-                            ? String(Math.floor(s / 4)).padStart(2, "0")
-                            : slotStartLabel(s).slice(0, 5)
-                          : ""}
-                      </th>
-                    ))}
-                  </tr>
+                  {fitToScreen ? (
+                    <>
+                      <tr>
+                        <th rowSpan={2} className="roster-sticky-col roster-day-thead-agent">
+                          Agent
+                        </th>
+                        {hourBandGroups.map((g) => (
+                          <th
+                            key={g.key}
+                            colSpan={g.colSpan}
+                            scope="colgroup"
+                            className="roster-hour-band-head"
+                            title={`${slotStartLabel(g.startSlot)}–${slotStartLabel(g.startSlot + g.colSpan - 1)}`}
+                          >
+                            {g.label}
+                          </th>
+                        ))}
+                      </tr>
+                      <tr>
+                        {slotIndices.map((s) => (
+                          <th
+                            key={s}
+                            data-slot-head={s}
+                            className={`roster-slot-head roster-slot-subhead${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
+                            title={slotStartLabel(s)}
+                          >
+                            {s % 4 === 0 ? "" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}
+                          </th>
+                        ))}
+                      </tr>
+                    </>
+                  ) : (
+                    <tr>
+                      <th className="roster-sticky-col">Agent</th>
+                      {slotIndices.map((s) => (
+                        <th
+                          key={s}
+                          data-slot-head={s}
+                          className={`roster-slot-head${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
+                          title={slotStartLabel(s)}
+                        >
+                          {s % 4 === 0 ? (compactHourHeader ? String(Math.floor(s / 4)).padStart(2, "0") : slotStartLabel(s).slice(0, 5)) : ""}
+                        </th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {team.agents.map((row: AgentRow) => (
