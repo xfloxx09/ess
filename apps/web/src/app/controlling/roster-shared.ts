@@ -17,6 +17,11 @@ export type AgentRow = {
   calendarDay: CalendarDayBadge | null;
 };
 export type TeamBlock = { teamId: string; teamName: string; agents: AgentRow[] };
+
+/** Eindeutiger Schlüssel für Raster-Markierung (agentId:slotIndex). */
+export function rosterSlotKey(agentId: string, slotIndex: number): string {
+  return `${agentId}:${slotIndex}`;
+}
 export type PauseSeg = { workMinutes: number; pauseMinutes: number };
 export type RosterProjectPayload = {
   projectId: string;

@@ -5,12 +5,9 @@ import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
-import type { AgentRow, PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
-import { findAgentInPayload, immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, slotStartLabel } from "../roster-shared";
-
-function rosterSlotKey(agentId: string, slotIndex: number) {
-  return `${agentId}:${slotIndex}`;
-}
+import type { PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
+import { findAgentInPayload, immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, rosterSlotKey, slotStartLabel } from "../roster-shared";
+import { RosterDayTeamMatrix } from "../RosterDayTeamMatrix";
 
 type Project = { id: string; name: string };
 
@@ -60,6 +57,8 @@ export default function RosterDayPage() {
 
   const [teamFilterId, setTeamFilterId] = useState<string>("all");
   const [agentSearch, setAgentSearch] = useState("");
+  /** Während Linksklick-Zieh-Auswahl: Virtualizer rendert mehr Zeilen (Treffer unter dem Cursor). */
+  const [rosterDragBoost, setRosterDragBoost] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -129,14 +128,6 @@ export default function RosterDayPage() {
       p.length === 0 ? "keine Auto-Pausen" : `${p.length} Pausen-Zyklus-Schritte (${p.map((x) => `${x.workMinutes}/${x.pauseMinutes}m`).join(" · ")})`;
     return `Soll-Arbeitstag FTE 1.0: ${h}h${r > 0 ? ` ${r}m` : ""} · ${pTxt}`;
   }, [data]);
-
-  const fitColPercents = useMemo(() => {
-    const n = slotIndices.length;
-    if (n === 0) return { agentPct: 14, slotPct: 86 };
-    const agentPct = n > 48 ? 11 : n > 24 ? 12 : 13;
-    const slotPct = Number(((100 - agentPct) / n).toFixed(5));
-    return { agentPct, slotPct };
-  }, [slotIndices.length]);
 
   const hourBandGroups = useMemo(() => {
     const indices = slotIndices;
@@ -442,6 +433,7 @@ export default function RosterDayPage() {
     const additive = e.shiftKey;
     const baseKeys = additive ? new Set(selectedKeysRef.current) : new Set<string>();
     dragSessionRef.current = { agentId, anchorSlot: slotIndex, baseKeys };
+    setRosterDragBoost(true);
 
     const applyRange = (endSlot: number) => {
       const sess = dragSessionRef.current;
@@ -481,6 +473,7 @@ export default function RosterDayPage() {
     };
 
     const onUp = () => {
+      setRosterDragBoost(false);
       if (slotDragRafRef.current) {
         cancelAnimationFrame(slotDragRafRef.current);
         slotDragRafRef.current = 0;
@@ -767,120 +760,17 @@ export default function RosterDayPage() {
                 {slotIndices.length} Viertelstunden · volle Breite)
               </span>
             </div>
-            <div className="ctrl-roster-day-scroll ctrl-roster-day-scroll--fit">
-              <table className="roster-day-table ctrl-roster-table">
-                <colgroup>
-                  <col style={{ width: `${fitColPercents.agentPct}%` }} />
-                  {slotIndices.map((s) => (
-                    <col key={s} style={{ width: `${fitColPercents.slotPct}%` }} />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th rowSpan={2} className="roster-sticky-col roster-day-thead-agent">
-                      Agent
-                    </th>
-                    {hourBandGroups.map((g) => (
-                      <th
-                        key={g.key}
-                        colSpan={g.colSpan}
-                        scope="colgroup"
-                        className="roster-hour-band-head"
-                        title={`${slotStartLabel(g.startSlot)}–${slotStartLabel(g.startSlot + g.colSpan - 1)}`}
-                      >
-                        {g.label}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    {slotIndices.map((s) => (
-                      <th
-                        key={s}
-                        data-slot-head={s}
-                        className={`roster-slot-head roster-slot-subhead${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
-                        title={slotStartLabel(s)}
-                      >
-                        {s % 4 === 0 ? "" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {team.agents.map((row: AgentRow) => (
-                    <tr key={row.agentId}>
-                      <td className="roster-sticky-col roster-agent-cell max-w-[11rem]">
-                        <strong className="line-clamp-2" title={row.fullName}>
-                          {row.fullName}
-                        </strong>
-                        <div className="roster-agent-email truncate" title={row.email}>
-                          {row.email}
-                        </div>
-                        <div className="muted text-[0.7rem]">FTE {row.fte}</div>
-                        {row.calendarDay ? (
-                          <div
-                            className="roster-cal-day-badge mt-1 inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[0.65rem] font-semibold leading-tight"
-                            style={{
-                              borderColor: row.calendarDay.color,
-                              backgroundColor: `${row.calendarDay.color}33`,
-                              color: "#112033",
-                            }}
-                            title={`Kalender: ${row.calendarDay.label} (${row.calendarDay.code})`}
-                          >
-                            <span className="shrink-0 font-normal opacity-75">Kal.</span>
-                            <span className="truncate">{row.calendarDay.code}</span>
-                          </div>
-                        ) : null}
-                      </td>
-                      {slotIndices.map((slotIndex) => {
-                        const slot = row.slots[slotIndex]!;
-                        const selKey = rosterSlotKey(row.agentId, slotIndex);
-                        const isSelected = selectedKeys.has(selKey);
-                        const hasShift = !!(slot.controllerCode || slot.rawCode);
-                        const cal = row.calendarDay;
-                        const calHint = !!(cal && !hasShift);
-                        const bg = hasShift
-                          ? (codeColors.get(slot.controllerCode ?? slot.rawCode ?? "") ?? "#dfe6ee")
-                          : calHint
-                            ? cal.color
-                            : "#f4f6f9";
-                        const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
-                        const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
-                          calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
-                        } · Ziehen = Block in einer Zeile · Strg/⌘+Klick = einzeln · Umschalt+Ziehen = addieren · Enter/Leer = einzeln · Rechtsklick = Menü`;
-                        return (
-                          <td
-                            key={slot.slotIndex}
-                            role="gridcell"
-                            tabIndex={0}
-                            data-roster-cell="1"
-                            data-roster-agent={row.agentId}
-                            data-roster-slot-index={slotIndex}
-                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${
-                              hasShift && !slot.agreed ? " roster-slot-warn" : ""
-                            }${calHint ? " roster-slot-cal-hint" : ""}${isSelected ? " roster-slot-selected" : ""}`}
-                            style={{
-                              background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
-                              color: hasShift || calHint ? "#112033" : "#aab7c4",
-                            }}
-                            title={slotTitle}
-                            onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
-                            onPointerDown={(e) => beginSlotDrag(row.agentId, slotIndex, e)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                toggleSlotInSelection(row.agentId, slot);
-                              }
-                            }}
-                          >
-                            {show}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <RosterDayTeamMatrix
+              team={team}
+              slotIndices={slotIndices}
+              hourBandGroups={hourBandGroups}
+              selectedKeys={selectedKeys}
+              codeColors={codeColors}
+              rosterDragBoost={rosterDragBoost}
+              beginSlotDrag={beginSlotDrag}
+              toggleSlotInSelection={toggleSlotInSelection}
+              openSlotMenu={openSlotMenu}
+            />
           </section>
         ))}
     </div>

@@ -95,28 +95,34 @@ async function main() {
     where: { email: "agent@ess.local" },
     create: {
       email: "agent@ess.local",
-      fullName: "Sample Agent",
+      fullName: "Sample Agent (FTE 1)",
       role: "AGENT",
       passwordHash,
       hourlyRateEuro: 12.5,
       locale: "de",
       teamId: teamNord.id,
+      fte: 1,
     },
-    update: { teamId: teamNord.id },
+    update: { teamId: teamNord.id, fte: 1, fullName: "Sample Agent (FTE 1)" },
   });
   const agent2 = await prisma.user.upsert({
     where: { email: "agent2@ess.local" },
     create: {
       email: "agent2@ess.local",
-      fullName: "Sample Agent (Team Süd)",
+      fullName: "Sample Agent (Team Süd, FTE 0.88)",
       role: "AGENT",
       passwordHash,
       hourlyRateEuro: 12,
       locale: "de",
       teamId: teamSued.id,
+      fte: 0.88,
     },
-    update: { teamId: teamSued.id },
+    update: { teamId: teamSued.id, fte: 0.88, fullName: "Sample Agent (Team Süd, FTE 0.88)" },
   });
+
+  /** FTE-Streuung für Demo-Agenten (28× GK + Retention-Bulk): 1.0, 0.88, 0.75, 0.5 rotierend */
+  const FTE_ROTATION = [1, 0.88, 0.75, 0.5] as const;
+  const fteAt = (i: number) => FTE_ROTATION[(i - 1) % FTE_ROTATION.length]!;
 
   // ~28 weitere Agenten auf GK CM KMU (Nord/Süd) + 2 Demo = 30 im Projekt GK; Retention = Telekom separat
   const bulkNord = 14;
@@ -124,53 +130,56 @@ async function main() {
   const bulkRet = 8;
   for (let i = 1; i <= bulkNord; i++) {
     const n = String(i).padStart(3, "0");
+    const fte = fteAt(i);
     await prisma.user.upsert({
       where: { email: `bulk.nord.${n}@ess.local` },
       create: {
         email: `bulk.nord.${n}@ess.local`,
-        fullName: `Demo Nord ${n}`,
+        fullName: `Demo Nord ${n} (FTE ${fte})`,
         role: "AGENT",
         passwordHash,
         hourlyRateEuro: 11 + (i % 5) * 0.25,
         locale: "de",
         teamId: teamNord.id,
-        fte: [0.75, 1, 1][i % 3],
+        fte,
       },
-      update: { teamId: teamNord.id, role: "AGENT", active: true, deletedAt: null },
+      update: { teamId: teamNord.id, role: "AGENT", active: true, deletedAt: null, fte },
     });
   }
   for (let i = 1; i <= bulkSued; i++) {
     const n = String(i).padStart(3, "0");
+    const fte = fteAt(i + bulkNord);
     await prisma.user.upsert({
       where: { email: `bulk.sued.${n}@ess.local` },
       create: {
         email: `bulk.sued.${n}@ess.local`,
-        fullName: `Demo Süd ${n}`,
+        fullName: `Demo Süd ${n} (FTE ${fte})`,
         role: "AGENT",
         passwordHash,
         hourlyRateEuro: 11.5,
         locale: "de",
         teamId: teamSued.id,
-        fte: [1, 0.8, 1][i % 3],
+        fte,
       },
-      update: { teamId: teamSued.id, role: "AGENT", active: true, deletedAt: null },
+      update: { teamId: teamSued.id, role: "AGENT", active: true, deletedAt: null, fte },
     });
   }
   for (let i = 1; i <= bulkRet; i++) {
     const n = String(i).padStart(3, "0");
+    const fte = fteAt(i + bulkNord + bulkSued);
     await prisma.user.upsert({
       where: { email: `bulk.ret.${n}@ess.local` },
       create: {
         email: `bulk.ret.${n}@ess.local`,
-        fullName: `Demo Retention ${n}`,
+        fullName: `Demo Retention ${n} (FTE ${fte})`,
         role: "AGENT",
         passwordHash,
         hourlyRateEuro: 12,
         locale: "de",
         teamId: teamRetention.id,
-        fte: 1,
+        fte,
       },
-      update: { teamId: teamRetention.id, role: "AGENT", active: true, deletedAt: null },
+      update: { teamId: teamRetention.id, role: "AGENT", active: true, deletedAt: null, fte },
     });
   }
 
@@ -526,7 +535,9 @@ async function main() {
   console.log("  controlling@ess.local / ChangeMe123!");
   console.log("  agent@ess.local / ChangeMe123!");
   console.log("  agent2@ess.local / ChangeMe123!");
-  console.log("  bulk.*@ess.local / ChangeMe123! — GK KMU ca. 30 Agenten (bulk.nord.001–014, bulk.sued.001–014) + Telekom-Retention-Demos.");
+  console.log(
+    "  bulk.*@ess.local / ChangeMe123! — GK KMU ca. 30 Agenten (bulk.nord.001–014, bulk.sued.001–014), FTE rotiert 1 / 0.88 / 0.75 / 0.5; Retention bulk.ret.* ebenfalls mit FTE-Mix.",
+  );
   console.log("  DB mit Demo-Daten füllen: im Ordner apps/api → pnpm exec prisma db seed");
   void admin;
   void controller;
