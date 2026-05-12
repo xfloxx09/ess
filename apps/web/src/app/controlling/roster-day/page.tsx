@@ -6,7 +6,11 @@ import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
 import type { AgentRow, PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
-import { findAgentInPayload, immutPatchSlot, slotStartLabel } from "../roster-shared";
+import { findAgentInPayload, immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, slotStartLabel } from "../roster-shared";
+
+function rosterSlotKey(agentId: string, slotIndex: number) {
+  return `${agentId}:${slotIndex}`;
+}
 
 type Project = { id: string; name: string };
 
@@ -35,7 +39,12 @@ export default function RosterDayPage() {
   const [saving, setSaving] = useState(false);
   const [activeTool, setActiveTool] = useState<Tool>({ kind: "code", code: "A" });
   const [preserveRaw, setPreserveRaw] = useState(true);
-  const selectDragRef = useRef<{ agentId: string } | null>(null);
+  /** `all` = 00:00–24:00; `project-open` = Raster laut Projekt-Öffnungszeiten */
+  const [timeScope, setTimeScope] = useState<"all" | typeof ROSTER_DAY_PROJECT_OPEN_ID>("all");
+  type DragSession = { agentId: string; anchorSlot: number; baseKeys: Set<string> };
+  const dragSessionRef = useRef<DragSession | null>(null);
+  const pointerDragCleanupRef = useRef<(() => void) | null>(null);
+  const slotDragRafRef = useRef(0);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const pendingRef = useRef<Map<string, Map<number, PendingOp>>>(new Map());
   const dataRef = useRef<RosterProjectPayload | null>(null);
@@ -71,7 +80,27 @@ export default function RosterDayPage() {
     return map;
   }, [data]);
 
-  const slotIndices = useMemo(() => Array.from({ length: 96 }, (_, i) => i), []);
+  const slotIndices = useMemo(() => {
+    if (!data) {
+      return Array.from({ length: 96 }, (_, i) => i);
+    }
+    if (timeScope === ROSTER_DAY_PROJECT_OPEN_ID) {
+      let { slotStart, slotEnd } = data.openingHours;
+      slotStart = Math.max(0, Math.min(95, slotStart));
+      slotEnd = Math.max(0, Math.min(95, slotEnd));
+      if (slotStart > slotEnd) {
+        const t = slotStart;
+        slotStart = slotEnd;
+        slotEnd = t;
+      }
+      return Array.from({ length: slotEnd - slotStart + 1 }, (_, i) => slotStart + i);
+    }
+    return Array.from({ length: 96 }, (_, i) => i);
+  }, [data, timeScope]);
+
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [timeScope]);
 
   const displayTeams = useMemo(() => {
     if (!data) return [];
@@ -167,6 +196,7 @@ export default function RosterDayPage() {
 
   useEffect(() => {
     setTeamFilterId("all");
+    setTimeScope("all");
   }, [projectId]);
 
   useEffect(() => {
@@ -379,15 +409,93 @@ export default function RosterDayPage() {
   }, []);
 
   useEffect(() => {
-    function up() {
-      selectDragRef.current = null;
-    }
-    window.addEventListener("mouseup", up);
-    window.addEventListener("blur", up);
     return () => {
-      window.removeEventListener("mouseup", up);
-      window.removeEventListener("blur", up);
+      if (slotDragRafRef.current) {
+        cancelAnimationFrame(slotDragRafRef.current);
+        slotDragRafRef.current = 0;
+      }
+      pointerDragCleanupRef.current?.();
     };
+  }, []);
+
+  const beginSlotDrag = useCallback((agentId: string, slotIndex: number, e: React.PointerEvent) => {
+    if (e.button !== 0) {
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const key = rosterSlotKey(agentId, slotIndex);
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      return;
+    }
+    e.preventDefault();
+    pointerDragCleanupRef.current?.();
+
+    const additive = e.shiftKey;
+    const baseKeys = additive ? new Set(selectedKeysRef.current) : new Set<string>();
+    dragSessionRef.current = { agentId, anchorSlot: slotIndex, baseKeys };
+
+    const applyRange = (endSlot: number) => {
+      const sess = dragSessionRef.current;
+      if (!sess) {
+        return;
+      }
+      const out = new Set(sess.baseKeys);
+      const lo = Math.min(sess.anchorSlot, endSlot);
+      const hi = Math.max(sess.anchorSlot, endSlot);
+      for (let i = lo; i <= hi; i++) {
+        out.add(rosterSlotKey(sess.agentId, i));
+      }
+      setSelectedKeys(out);
+    };
+
+    applyRange(slotIndex);
+
+    const onMove = (ev: PointerEvent) => {
+      if (slotDragRafRef.current) {
+        cancelAnimationFrame(slotDragRafRef.current);
+      }
+      slotDragRafRef.current = requestAnimationFrame(() => {
+        slotDragRafRef.current = 0;
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const cell = (el as HTMLElement | null)?.closest?.('[data-roster-cell="1"]');
+        if (!cell || !dragSessionRef.current) {
+          return;
+        }
+        const ds = dragSessionRef.current;
+        const aid = (cell as HTMLElement).dataset.rosterAgent;
+        const si = Number((cell as HTMLElement).dataset.rosterSlotIndex);
+        if (aid !== ds.agentId || !Number.isFinite(si)) {
+          return;
+        }
+        applyRange(si);
+      });
+    };
+
+    const onUp = () => {
+      if (slotDragRafRef.current) {
+        cancelAnimationFrame(slotDragRafRef.current);
+        slotDragRafRef.current = 0;
+      }
+      pointerDragCleanupRef.current = null;
+      dragSessionRef.current = null;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    };
+
+    pointerDragCleanupRef.current = onUp;
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   }, []);
 
   useEffect(() => {
@@ -409,53 +517,8 @@ export default function RosterDayPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const onSlotEnter = useCallback((agentId: string, slot: SlotCell) => {
-    const drag = selectDragRef.current;
-    if (!drag || drag.agentId !== agentId) {
-      return;
-    }
-    const key = `${agentId}:${slot.slotIndex}`;
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-  }, []);
-
-  const onSlotDown = useCallback((agentId: string, slot: SlotCell, e: React.MouseEvent) => {
-    if (e.button !== 0) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    const key = `${agentId}:${slot.slotIndex}`;
-    if (e.ctrlKey || e.metaKey) {
-      selectDragRef.current = null;
-      setSelectedKeys((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) {
-          next.delete(key);
-        } else {
-          next.add(key);
-        }
-        return next;
-      });
-      return;
-    }
-    selectDragRef.current = { agentId };
-    if (e.shiftKey) {
-      setSelectedKeys((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
-    } else {
-      setSelectedKeys(new Set([key]));
-    }
-  }, []);
-
   const toggleSlotInSelection = useCallback((agentId: string, slot: SlotCell) => {
-    const key = `${agentId}:${slot.slotIndex}`;
+    const key = rosterSlotKey(agentId, slot.slotIndex);
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -485,10 +548,9 @@ export default function RosterDayPage() {
       <div className="page-head">
         <h2>Schichtplanung · Tagesmatrix</h2>
         <p>
-          <strong>So funktioniert das Raster</strong>: Zuerst eine oder mehrere Viertelstunden-Zellen auswählen (in einer Zeile ziehen, mit{" "}
+          <strong>Raster</strong>: In <strong>einer Agentenzeile</strong> ziehen — es wird immer der <strong>lückenlose Block</strong> zwischen Start- und End-Viertelstunde markiert (auch bei schneller Mausbewegung). <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Umschalt</kbd> hält die bisherige Auswahl und addiert einen weiteren Block.{" "}
           <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Strg</kbd>/
-          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">⌘</kbd> einzeln an- oder abwählen, mit <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Umschalt</kbd> zur bestehenden Auswahl
-          hinzufügen). Dann das gewünschte Werkzeug wählen und mit <strong>Übernehmen &amp; speichern</strong> bestätigen — erst dann wird an den Server geschrieben. <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> leert die Auswahl. Rechtsklick: Schnellaktionen. Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
+          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">⌘</kbd>+Klick schaltet einzelne Zellen. Werkzeug wählen, dann <strong>Übernehmen &amp; speichern</strong>. <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> hebt die Auswahl auf. Rechtsklick: Schnellaktionen. Kalender: <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
 
@@ -528,22 +590,61 @@ export default function RosterDayPage() {
               {saving && <span className="ctrl-roster-saving">Speichern…</span>}
             </div>
             <div className="muted border-t border-border pt-2 text-xs leading-snug">{plannerHint}</div>
-            <div className="flex flex-col gap-2 border-t border-border pt-2 sm:flex-row sm:flex-wrap sm:items-end">
-              <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-40">
-                <span>Team</span>
-                <select value={teamFilterId} onChange={(e) => setTeamFilterId(e.target.value)}>
-                  <option value="all">Alle Teams</option>
-                  {data.teams.map((t) => (
-                    <option key={t.teamId} value={t.teamId}>
-                      {t.teamName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="ctrl-roster-field min-w-[10rem] flex-1">
-                <span>Agent suchen</span>
-                <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
-              </label>
+            <div className="flex flex-col gap-3 border-t border-border pt-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Zeitfenster</span>
+                <div
+                  className="inline-flex max-w-full flex-wrap rounded-lg border border-border bg-muted/35 p-0.5"
+                  role="group"
+                  aria-label="Sichtbare Viertelstunden"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={timeScope === "all"}
+                    className={
+                      timeScope === "all"
+                        ? "rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
+                        : "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
+                    }
+                    onClick={() => setTimeScope("all")}
+                  >
+                    Ganzer Tag · 0–24 h
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={timeScope === ROSTER_DAY_PROJECT_OPEN_ID}
+                    className={
+                      timeScope === ROSTER_DAY_PROJECT_OPEN_ID
+                        ? "rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
+                        : "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
+                    }
+                    title={`Admin → Schichtplan-Kalender: ${slotStartLabel(data.openingHours.slotStart)}–${slotStartLabel(data.openingHours.slotEnd)}`}
+                    onClick={() => setTimeScope(ROSTER_DAY_PROJECT_OPEN_ID)}
+                  >
+                    Projekt-Öffnungszeiten
+                  </button>
+                </div>
+                <p className="max-w-2xl text-[0.7rem] leading-snug text-muted-foreground">
+                  Projekt-Öffnungszeiten werden im Admin unter <strong className="text-foreground">Schichtplan-Kalender</strong> gepflegt (gleiche Seite wie Zielzeit &amp; Pausen).
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-40">
+                  <span>Team</span>
+                  <select value={teamFilterId} onChange={(e) => setTeamFilterId(e.target.value)}>
+                    <option value="all">Alle Teams</option>
+                    {data.teams.map((t) => (
+                      <option key={t.teamId} value={t.teamId}>
+                        {t.teamName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="ctrl-roster-field min-w-[10rem] flex-1">
+                  <span>Agent suchen</span>
+                  <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
+                </label>
+              </div>
             </div>
           </>
         )}
@@ -662,7 +763,8 @@ export default function RosterDayPage() {
             <div className="ctrl-roster-team__head flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="m-0">{team.teamName}</h3>
               <span className="muted text-sm">
-                {team.agents.length} Agenten · Raster 00:00–24:00 (96 Viertelstunden, volle Breite)
+                {team.agents.length} Agenten · Raster {slotStartLabel(slotIndices[0] ?? 0)}–{slotStartLabel(slotIndices[slotIndices.length - 1] ?? 0)} (
+                {slotIndices.length} Viertelstunden · volle Breite)
               </span>
             </div>
             <div className="ctrl-roster-day-scroll ctrl-roster-day-scroll--fit">
@@ -731,7 +833,7 @@ export default function RosterDayPage() {
                       </td>
                       {slotIndices.map((slotIndex) => {
                         const slot = row.slots[slotIndex]!;
-                        const selKey = `${row.agentId}:${slotIndex}`;
+                        const selKey = rosterSlotKey(row.agentId, slotIndex);
                         const isSelected = selectedKeys.has(selKey);
                         const hasShift = !!(slot.controllerCode || slot.rawCode);
                         const cal = row.calendarDay;
@@ -744,12 +846,15 @@ export default function RosterDayPage() {
                         const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
                         const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
                           calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
-                        } · Klick/Ziehen = Auswahl · Strg/⌘+Klick = einzeln umschalten · Umschalt+Klick ergänzt · Enter/Leer = Umschalten · Rechtsklick = Menü`;
+                        } · Ziehen = Block in einer Zeile · Strg/⌘+Klick = einzeln · Umschalt+Ziehen = addieren · Enter/Leer = einzeln · Rechtsklick = Menü`;
                         return (
                           <td
                             key={slot.slotIndex}
                             role="gridcell"
                             tabIndex={0}
+                            data-roster-cell="1"
+                            data-roster-agent={row.agentId}
+                            data-roster-slot-index={slotIndex}
                             className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${
                               hasShift && !slot.agreed ? " roster-slot-warn" : ""
                             }${calHint ? " roster-slot-cal-hint" : ""}${isSelected ? " roster-slot-selected" : ""}`}
@@ -759,8 +864,7 @@ export default function RosterDayPage() {
                             }}
                             title={slotTitle}
                             onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
-                            onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
-                            onMouseEnter={() => onSlotEnter(row.agentId, slot)}
+                            onPointerDown={(e) => beginSlotDrag(row.agentId, slotIndex, e)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
