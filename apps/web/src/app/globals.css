@@ -365,6 +365,39 @@
     max-width: var(--roster-slot, 22px);
     box-sizing: border-box;
   }
+  .ctrl-roster-day-scroll .roster-slot-head.roster-slot-on-hour,
+  .ctrl-roster-day-scroll .roster-slot-cell.roster-slot-on-hour {
+    box-shadow: inset 1px 0 0 hsl(var(--border));
+  }
+  .ctrl-roster-day-scroll--fit {
+    overflow-x: hidden;
+  }
+  .ctrl-roster-day-scroll--fit table.roster-day-table {
+    width: 100% !important;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+  .ctrl-roster-day-scroll--fit thead th.roster-sticky-col,
+  .ctrl-roster-day-scroll--fit tbody td.roster-sticky-col {
+    min-width: 0 !important;
+    max-width: none;
+    overflow: hidden;
+  }
+  .ctrl-roster-day-scroll--fit td.roster-agent-cell {
+    max-width: none !important;
+  }
+  .ctrl-roster-day-scroll--fit .roster-slot-head,
+  .ctrl-roster-day-scroll--fit .roster-slot-cell {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding-left: 1px;
+    padding-right: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(6px, 0.35vw + 6px, 10px);
+  }
   .roster-month-table,
   .roster-scroll table {
     @apply w-max border-collapse text-xs;

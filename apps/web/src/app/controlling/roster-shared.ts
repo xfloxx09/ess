@@ -31,7 +31,7 @@ export function slotStartLabel(slot: number): string {
 
 /** Voreingestellte Sichtfenster (Viertelstunden-Index 0–95), weniger horizontales Scrollen. */
 export const ROSTER_DAY_TIME_WINDOWS: ReadonlyArray<{ id: string; label: string; start: number; end: number }> = [
-  { id: "all", label: "0–24 h", start: 0, end: 95 },
+  { id: "all", label: "Ganzer Tag · 0–24 h", start: 0, end: 95 },
   { id: "buero", label: "06–22 h", start: 24, end: 87 },
   { id: "kern", label: "08–18 h", start: 32, end: 71 },
   { id: "frueh", label: "06–12 h", start: 24, end: 47 },

@@ -50,6 +50,13 @@ export default function RosterDayPage() {
   const [teamFilterId, setTeamFilterId] = useState<string>("all");
   const [agentSearch, setAgentSearch] = useState("");
   const [slotDensity, setSlotDensity] = useState<"kompakt" | "normal" | "weit">("normal");
+  const [fitToScreen, setFitToScreen] = useState(true);
+
+  useEffect(() => {
+    if (timeWindow === "all") {
+      setFitToScreen(true);
+    }
+  }, [timeWindow]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -109,15 +116,26 @@ export default function RosterDayPage() {
   }, [data]);
 
   useLayoutEffect(() => {
+    if (fitToScreen) return;
     const first = slotIndices[0];
     if (first === undefined) return;
     document.querySelectorAll(".ctrl-roster-day-scroll").forEach((el) => {
       const head = el.querySelector(`[data-slot-head="${first}"]`);
       head?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
     });
-  }, [slotIndices]);
+  }, [slotIndices, fitToScreen]);
 
   const slotPx = slotDensity === "kompakt" ? 18 : slotDensity === "weit" ? 28 : 22;
+
+  const fitColPercents = useMemo(() => {
+    const n = slotIndices.length;
+    if (n === 0) return { agentPct: 14, slotPct: 86 };
+    const agentPct = n > 48 ? 11 : n > 24 ? 12 : 13;
+    const slotPct = Number(((100 - agentPct) / n).toFixed(5));
+    return { agentPct, slotPct };
+  }, [slotIndices.length]);
+
+  const compactHourHeader = slotIndices.length >= 40;
 
   const stats = useMemo(() => {
     if (!data) {
@@ -393,7 +411,7 @@ export default function RosterDayPage() {
         <h2>Schichtplanung · Tagesmatrix</h2>
         <p>
           <strong>Raster</strong>: Linksklick ziehen (kein Markieren), Doppelklick leert eine belegte Zelle, Rechtsklick öffnet Schnellaktionen.{" "}
-          <strong>Zeitfenster</strong> und <strong>Filter</strong> reduzieren Scrollen — voller Tag nur bei Bedarf („0–24 h“). Kalender-Auswertung:{" "}
+          <strong>Ganzer Tag ohne seitliches Scrollen</strong>: Zeitfenster <strong>Ganzer Tag · 0–24 h</strong> wählen — die Ansicht <strong>Volle Breite</strong> schaltet sich dabei automatisch ein (Raster nutzt die volle Breite). Für größere Zellen: <strong>Große Zellen</strong> und ggf. ein kürzeres Zeitfenster. Kalender-Auswertung:{" "}
           <strong>Schichtplan → Bericht</strong>.
         </p>
       </div>
@@ -465,9 +483,52 @@ export default function RosterDayPage() {
                 <span>Agent suchen</span>
                 <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
               </label>
-              <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-36">
+              <div className="flex w-full min-w-[12rem] shrink-0 flex-col gap-1 sm:w-auto">
+                <span className="text-xs font-medium text-muted-foreground">Spaltenbreite</span>
+                <div
+                  className="inline-flex rounded-lg border border-border bg-muted/35 p-0.5"
+                  role="group"
+                  aria-label="Spaltenbreite: volle Breite oder feste Zellen"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={fitToScreen}
+                    className={
+                      fitToScreen
+                        ? "rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
+                        : "rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
+                    }
+                    onClick={() => setFitToScreen(true)}
+                  >
+                    Volle Breite
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={!fitToScreen}
+                    className={
+                      !fitToScreen
+                        ? "rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
+                        : "rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-background/80"
+                    }
+                    onClick={() => setFitToScreen(false)}
+                  >
+                    Große Zellen
+                  </button>
+                </div>
+                <span className="max-w-[20rem] text-[0.7rem] leading-snug text-muted-foreground">
+                  {fitToScreen
+                    ? "Kein horizontales Scrollen — alle sichtbaren Viertelstunden teilen sich die Breite."
+                    : "Feste Pixelbreite — bei vielen Stunden seitwärts scrollen."}
+                </span>
+              </div>
+              <label className={`ctrl-roster-field w-full min-w-[8rem] sm:w-36${fitToScreen ? " opacity-60" : ""}`}>
                 <span>Zellenbreite</span>
-                <select value={slotDensity} onChange={(e) => setSlotDensity(e.target.value as typeof slotDensity)}>
+                <select
+                  value={slotDensity}
+                  disabled={fitToScreen}
+                  title={fitToScreen ? "Bei „In Fensterbreite“ wird die Breite automatisch verteilt." : undefined}
+                  onChange={(e) => setSlotDensity(e.target.value as typeof slotDensity)}
+                >
                   <option value="kompakt">Kompakt</option>
                   <option value="normal">Normal</option>
                   <option value="weit">Weit</option>
@@ -565,16 +626,33 @@ export default function RosterDayPage() {
               </span>
             </div>
             <div
-              className="ctrl-roster-day-scroll"
+              className={`ctrl-roster-day-scroll${fitToScreen ? " ctrl-roster-day-scroll--fit" : ""}`}
               style={{ ["--roster-slot" as string]: `${slotPx}px` } as import("react").CSSProperties}
             >
               <table className="roster-day-table ctrl-roster-table">
+                {fitToScreen ? (
+                  <colgroup>
+                    <col style={{ width: `${fitColPercents.agentPct}%` }} />
+                    {slotIndices.map((s) => (
+                      <col key={s} style={{ width: `${fitColPercents.slotPct}%` }} />
+                    ))}
+                  </colgroup>
+                ) : null}
                 <thead>
                   <tr>
                     <th className="roster-sticky-col">Agent</th>
                     {slotIndices.map((s) => (
-                      <th key={s} data-slot-head={s} className="roster-slot-head" title={slotStartLabel(s)}>
-                        {s % 4 === 0 ? slotStartLabel(s).slice(0, 5) : ""}
+                      <th
+                        key={s}
+                        data-slot-head={s}
+                        className={`roster-slot-head${s % 4 === 0 ? " roster-slot-on-hour" : ""}`}
+                        title={slotStartLabel(s)}
+                      >
+                        {s % 4 === 0
+                          ? compactHourHeader
+                            ? String(Math.floor(s / 4)).padStart(2, "0")
+                            : slotStartLabel(s).slice(0, 5)
+                          : ""}
                       </th>
                     ))}
                   </tr>
@@ -600,7 +678,7 @@ export default function RosterDayPage() {
                             key={slot.slotIndex}
                             role="gridcell"
                             tabIndex={0}
-                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slot.agreed ? "" : " roster-slot-warn"}`}
+                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${slot.agreed ? "" : " roster-slot-warn"}`}
                             style={{
                               background: slot.controllerCode ? `${bg}55` : undefined,
                               color: slot.controllerCode ? "#112033" : "#aab7c4",
