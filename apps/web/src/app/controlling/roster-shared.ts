@@ -16,6 +16,8 @@ export type RosterProjectPayload = {
   quarterHourCodes: CodeDef[];
   teams: TeamBlock[];
   planner: { targetDayMinutes: number; pausePattern: PauseSeg[] };
+  /** Raster „Projekt-Öffnungszeiten“ (Viertelstunden-Indizes inkl.). */
+  openingHours: { slotStart: number; slotEnd: number };
 };
 
 export type PendingOp =
@@ -30,6 +32,8 @@ export function slotStartLabel(slot: number): string {
 }
 
 /** Voreingestellte Sichtfenster (Viertelstunden-Index 0–95), weniger horizontales Scrollen. */
+export const ROSTER_DAY_PROJECT_OPEN_ID = "project-open" as const;
+
 export const ROSTER_DAY_TIME_WINDOWS: ReadonlyArray<{ id: string; label: string; start: number; end: number }> = [
   { id: "all", label: "Ganzer Tag · 0–24 h", start: 0, end: 95 },
   { id: "buero", label: "06–22 h", start: 24, end: 87 },

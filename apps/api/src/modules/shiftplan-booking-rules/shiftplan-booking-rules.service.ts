@@ -83,7 +83,12 @@ export class ShiftplanBookingRulesService {
       this.prisma.bookingType.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
       this.prisma.project.findUnique({
         where: { id: projectId },
-        select: { shiftplanTargetDayMinutes: true, shiftplanPausePatternJson: true },
+        select: {
+          shiftplanTargetDayMinutes: true,
+          shiftplanPausePatternJson: true,
+          shiftplanOpeningSlotStart: true,
+          shiftplanOpeningSlotEnd: true,
+        },
       }),
     ]);
     return {
@@ -95,8 +100,15 @@ export class ShiftplanBookingRulesService {
         ? {
             shiftplanTargetDayMinutes: projectProfile.shiftplanTargetDayMinutes,
             shiftplanPausePatternJson: projectProfile.shiftplanPausePatternJson,
+            shiftplanOpeningSlotStart: projectProfile.shiftplanOpeningSlotStart,
+            shiftplanOpeningSlotEnd: projectProfile.shiftplanOpeningSlotEnd,
           }
-        : { shiftplanTargetDayMinutes: 480, shiftplanPausePatternJson: null },
+        : {
+            shiftplanTargetDayMinutes: 480,
+            shiftplanPausePatternJson: null,
+            shiftplanOpeningSlotStart: 24,
+            shiftplanOpeningSlotEnd: 87,
+          },
     };
   }
 
@@ -164,6 +176,8 @@ export class ShiftplanBookingRulesService {
     projectId: string;
     shiftplanTargetDayMinutes?: number;
     shiftplanPausePattern?: Array<{ workMinutes: number; pauseMinutes: number }>;
+    shiftplanOpeningSlotStart?: number;
+    shiftplanOpeningSlotEnd?: number;
   }) {
     const data: Prisma.ProjectUpdateInput = {};
     if (input.shiftplanTargetDayMinutes !== undefined) {
@@ -171,6 +185,17 @@ export class ShiftplanBookingRulesService {
     }
     if (input.shiftplanPausePattern !== undefined) {
       data.shiftplanPausePatternJson = input.shiftplanPausePattern;
+    }
+    if (input.shiftplanOpeningSlotStart !== undefined && input.shiftplanOpeningSlotEnd !== undefined) {
+      let a = Math.max(0, Math.min(95, input.shiftplanOpeningSlotStart));
+      let b = Math.max(0, Math.min(95, input.shiftplanOpeningSlotEnd));
+      if (a > b) {
+        const t = a;
+        a = b;
+        b = t;
+      }
+      data.shiftplanOpeningSlotStart = a;
+      data.shiftplanOpeningSlotEnd = b;
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException("Keine Felder zum Speichern.");

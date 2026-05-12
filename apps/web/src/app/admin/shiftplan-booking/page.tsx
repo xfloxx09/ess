@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { toMessage, useRequireAuth } from "@/lib/auth";
 import { useT } from "@/i18n/provider";
 import { currentMonthKey } from "@/lib/utils";
+import { slotIndexToTimeString, timeToSlotIndex } from "@/app/controlling/roster-shared";
 
 type Project = { id: string; name: string };
 
@@ -42,6 +43,8 @@ type RulesBundle = {
   planner: {
     shiftplanTargetDayMinutes: number;
     shiftplanPausePatternJson: unknown;
+    shiftplanOpeningSlotStart: number;
+    shiftplanOpeningSlotEnd: number;
   };
 };
 
@@ -76,6 +79,9 @@ export default function AdminShiftplanBookingPage() {
     ),
   );
 
+  const [openingSlotStart, setOpeningSlotStart] = useState(24);
+  const [openingSlotEnd, setOpeningSlotEnd] = useState(87);
+
   const bookingTypes = bundle?.bookingTypes ?? [];
 
   useEffect(() => {
@@ -106,6 +112,8 @@ export default function AdminShiftplanBookingPage() {
       }
       if (b.planner) {
         setPlannerMinutes(b.planner.shiftplanTargetDayMinutes);
+        setOpeningSlotStart(b.planner.shiftplanOpeningSlotStart ?? 24);
+        setOpeningSlotEnd(b.planner.shiftplanOpeningSlotEnd ?? 87);
         setPlannerPatternJson(
           JSON.stringify(
             b.planner.shiftplanPausePatternJson ??
@@ -120,6 +128,8 @@ export default function AdminShiftplanBookingPage() {
         );
       } else {
         setPlannerMinutes(480);
+        setOpeningSlotStart(24);
+        setOpeningSlotEnd(87);
         setPlannerPatternJson(
           JSON.stringify(
             [
@@ -248,7 +258,13 @@ export default function AdminShiftplanBookingPage() {
       await api("/config/project-shiftplan-planner", {
         method: "POST",
         token,
-        body: { projectId, shiftplanTargetDayMinutes: plannerMinutes, shiftplanPausePattern: pattern },
+        body: {
+          projectId,
+          shiftplanTargetDayMinutes: plannerMinutes,
+          shiftplanPausePattern: pattern,
+          shiftplanOpeningSlotStart: openingSlotStart,
+          shiftplanOpeningSlotEnd: openingSlotEnd,
+        },
       });
       setStatus("Schichtplaner-Einstellungen gespeichert.");
       await loadRules();
@@ -346,7 +362,8 @@ export default function AdminShiftplanBookingPage() {
         <CardHeader>
           <CardTitle>Schichtplaner: Zielzeit &amp; Pausen</CardTitle>
           <CardDescription>
-            Gilt pro Projekt für die FTE-Füllung in der Tagesmatrix. Arbeit in Minuten, danach Pause in Minuten — zyklisch wiederholt.
+            Gilt pro Projekt für die FTE-Füllung in der Tagesmatrix. Arbeit in Minuten, danach Pause in Minuten — zyklisch wiederholt.{" "}
+            <strong>Öffnungszeiten</strong> steuern die Schaltfläche „Projekt-Öffnungszeiten“ im Schichtplan (Controlling).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 max-w-3xl">
@@ -354,6 +371,37 @@ export default function AdminShiftplanBookingPage() {
             <Label>Ziel-Arbeitszeit bei FTE 1,0 (Minuten / Tag)</Label>
             <Input type="number" min={120} max={840} value={plannerMinutes} onChange={(e) => setPlannerMinutes(Number(e.target.value) || 480)} className="w-40" />
           </div>
+          <div className="grid max-w-xl gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Öffnungszeiten: erste Viertelstunde</Label>
+              <Input
+                type="time"
+                step={900}
+                value={slotIndexToTimeString(openingSlotStart)}
+                onChange={(e) => {
+                  const i = timeToSlotIndex(e.target.value);
+                  if (i !== null) setOpeningSlotStart(i);
+                }}
+                className="w-full font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Öffnungszeiten: letzte Viertelstunde (inkl.)</Label>
+              <Input
+                type="time"
+                step={900}
+                value={slotIndexToTimeString(openingSlotEnd)}
+                onChange={(e) => {
+                  const i = timeToSlotIndex(e.target.value);
+                  if (i !== null) setOpeningSlotEnd(i);
+                }}
+                className="w-full font-mono"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Nur Viertelstunden (00, 15, 30, 45). Start muss vor oder gleich Ende liegen — wird beim Speichern sonst automatisch getauscht.
+          </p>
           <div className="space-y-2">
             <Label>Pausen-Muster (JSON)</Label>
             <textarea

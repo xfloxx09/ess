@@ -101,7 +101,13 @@ export class ShiftplanService {
     await this.assertProjectVisible(user, projectId);
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { name: true, shiftplanTargetDayMinutes: true, shiftplanPausePatternJson: true },
+      select: {
+        name: true,
+        shiftplanTargetDayMinutes: true,
+        shiftplanPausePatternJson: true,
+        shiftplanOpeningSlotStart: true,
+        shiftplanOpeningSlotEnd: true,
+      },
     });
     if (!project) throw new NotFoundException("Project not found");
     const codes = await this.listCodes();
@@ -131,6 +137,15 @@ export class ShiftplanService {
         ),
       })),
     );
+    let slotStart = project.shiftplanOpeningSlotStart ?? 24;
+    let slotEnd = project.shiftplanOpeningSlotEnd ?? 87;
+    slotStart = Math.max(0, Math.min(95, slotStart));
+    slotEnd = Math.max(0, Math.min(95, slotEnd));
+    if (slotStart > slotEnd) {
+      const t = slotStart;
+      slotStart = slotEnd;
+      slotEnd = t;
+    }
     return {
       projectId,
       projectName: project.name,
@@ -141,6 +156,7 @@ export class ShiftplanService {
         targetDayMinutes: project.shiftplanTargetDayMinutes,
         pausePattern: parsePausePattern(project.shiftplanPausePatternJson),
       },
+      openingHours: { slotStart, slotEnd },
     };
   }
 

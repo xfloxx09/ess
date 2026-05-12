@@ -179,11 +179,27 @@ export const pausePatternSegmentSchema = z.object({
   pauseMinutes: z.number().int().min(0).max(180),
 });
 
-export const projectShiftplanPlannerUpsertSchema = z.object({
-  projectId: z.string().min(1),
-  shiftplanTargetDayMinutes: z.number().int().min(120).max(840).optional(),
-  shiftplanPausePattern: z.array(pausePatternSegmentSchema).min(1).max(24).optional(),
-});
+export const projectShiftplanPlannerUpsertSchema = z
+  .object({
+    projectId: z.string().min(1),
+    shiftplanTargetDayMinutes: z.number().int().min(120).max(840).optional(),
+    shiftplanPausePattern: z.array(pausePatternSegmentSchema).min(1).max(24).optional(),
+    shiftplanOpeningSlotStart: z.number().int().min(0).max(95).optional(),
+    shiftplanOpeningSlotEnd: z.number().int().min(0).max(95).optional(),
+  })
+  .refine(
+    (d) =>
+      (d.shiftplanOpeningSlotStart === undefined && d.shiftplanOpeningSlotEnd === undefined) ||
+      (d.shiftplanOpeningSlotStart !== undefined && d.shiftplanOpeningSlotEnd !== undefined),
+    { message: "Öffnungszeiten: Start- und End-Slot gemeinsam angeben.", path: ["shiftplanOpeningSlotStart"] },
+  )
+  .refine(
+    (d) =>
+      d.shiftplanOpeningSlotStart === undefined ||
+      d.shiftplanOpeningSlotEnd === undefined ||
+      d.shiftplanOpeningSlotStart <= d.shiftplanOpeningSlotEnd,
+    { message: "Öffnungszeiten: Start muss vor oder gleich Ende sein.", path: ["shiftplanOpeningSlotEnd"] },
+  );
 export type ProjectShiftplanPlannerUpsertDto = z.infer<typeof projectShiftplanPlannerUpsertSchema>;
 
 export const antragCreateSchema = z.object({

@@ -5,7 +5,7 @@ import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
-import { immutPatchSlot, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
+import { immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
 
 type Project = { id: string; name: string };
 type CodeDef = { id: string; code: string; label: string; color: string };
@@ -78,9 +78,19 @@ export default function RosterDayPage() {
   }, [data]);
 
   const slotWindow = useMemo(() => {
-    const w = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === timeWindow) ?? ROSTER_DAY_TIME_WINDOWS[0]!;
-    return { start: w.start, end: w.end, label: w.label };
-  }, [timeWindow]);
+    if (timeWindow === ROSTER_DAY_PROJECT_OPEN_ID && data?.openingHours) {
+      const { slotStart, slotEnd } = data.openingHours;
+      return {
+        start: slotStart,
+        end: slotEnd,
+        label: "Projekt-Öffnungszeiten",
+        id: ROSTER_DAY_PROJECT_OPEN_ID,
+      };
+    }
+    const kern = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === "kern") ?? ROSTER_DAY_TIME_WINDOWS[0]!;
+    const w = ROSTER_DAY_TIME_WINDOWS.find((x) => x.id === timeWindow) ?? kern;
+    return { start: w.start, end: w.end, label: w.label, id: w.id };
+  }, [timeWindow, data?.openingHours]);
 
   const slotIndices = useMemo(
     () => Array.from({ length: slotWindow.end - slotWindow.start + 1 }, (_, i) => slotWindow.start + i),
@@ -191,6 +201,7 @@ export default function RosterDayPage() {
 
   useEffect(() => {
     setTeamFilterId("all");
+    setTimeWindow((tw) => (tw === ROSTER_DAY_PROJECT_OPEN_ID ? "kern" : tw));
   }, [projectId]);
 
   useEffect(() => {
@@ -487,7 +498,23 @@ export default function RosterDayPage() {
                       {w.label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className={
+                      timeWindow === ROSTER_DAY_PROJECT_OPEN_ID
+                        ? "rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                        : "btn-secondary rounded-md px-2.5 py-1 text-xs"
+                    }
+                    title={`Konfiguriert im Admin (Schichtplan-Kalender): ${slotStartLabel(data.openingHours.slotStart)}–${slotStartLabel(data.openingHours.slotEnd)}`}
+                    onClick={() => setTimeWindow(ROSTER_DAY_PROJECT_OPEN_ID)}
+                  >
+                    Projekt-Öffnungszeiten
+                  </button>
                 </div>
+                <p className="max-w-xl text-[0.65rem] leading-snug text-muted-foreground">
+                  Projekt-Öffnungszeiten: Start und Ende pro Projekt unter{" "}
+                  <strong className="text-foreground">Admin → Schichtplan-Kalender</strong> (gleiche Seite wie Zielzeit &amp; Pausen).
+                </p>
               </div>
               <label className="ctrl-roster-field w-full min-w-[8rem] sm:w-40">
                 <span>Team</span>
