@@ -256,19 +256,32 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
                   <tr>
                     <td className="roster-sticky-col roster-agent-cell">Slots</td>
                     {row.slots.map((slot) => {
-                      const bg = slot.controllerCode ? (codeColors.get(slot.controllerCode) ?? "#dfe6ee") : "#f4f6f9";
-                      const show = slot.controllerCode ?? "·";
+                      const hasShift = !!(slot.controllerCode || slot.rawCode);
+                      const cal = row.calendarDay;
+                      const calHint = !!(cal && !hasShift);
+                      const bg = hasShift
+                        ? (codeColors.get(slot.controllerCode ?? slot.rawCode ?? "") ?? "#dfe6ee")
+                        : calHint
+                          ? cal.color
+                          : "#f4f6f9";
+                      const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
                       return (
                         <td
                           key={slot.slotIndex}
                           role="gridcell"
                           tabIndex={0}
-                          className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slot.agreed ? "" : " roster-slot-warn"}`}
+                          className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${
+                            hasShift && !slot.agreed ? " roster-slot-warn" : ""
+                          }${calHint ? " roster-slot-cal-hint" : ""}`}
                           style={{
-                            background: slot.controllerCode ? `${bg}55` : undefined,
-                            color: slot.controllerCode ? "#112033" : "#aab7c4",
+                            background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
+                            color: hasShift || calHint ? "#112033" : "#aab7c4",
                           }}
-                          title="Doppelklick = Zelle leeren"
+                          title={
+                            calHint
+                              ? `Kalender: ${cal.label} (${cal.code}) · Schichtplan leer · Doppelklick = Zelle leeren`
+                              : "Doppelklick = Zelle leeren"
+                          }
                           onMouseDown={(e) => {
                             if (e.button !== 0) return;
                             e.preventDefault();

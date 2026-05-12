@@ -122,6 +122,26 @@ export class ShiftplanService {
         },
       },
     });
+    const allAgentIds = teams.flatMap((t) => t.agents.map((a) => a.id));
+    const calendarByAgent = new Map<string, { code: string; label: string; color: string; category: string }>();
+    if (allAgentIds.length > 0) {
+      const calendarRows = await this.prisma.calendarBooking.findMany({
+        where: { agentId: { in: allAgentIds }, date },
+        select: {
+          agentId: true,
+          bookingType: { select: { code: true, label: true, color: true, category: true } },
+        },
+      });
+      for (const r of calendarRows) {
+        calendarByAgent.set(r.agentId, {
+          code: r.bookingType.code,
+          label: r.bookingType.label,
+          color: r.bookingType.color,
+          category: r.bookingType.category,
+        });
+      }
+    }
+
     const teamPayload = await Promise.all(
       teams.map(async (team) => ({
         teamId: team.id,
@@ -133,6 +153,7 @@ export class ShiftplanService {
             email: agent.email,
             fte: agent.fte,
             slots: await this.buildSlotsForAgent(agent.id, date),
+            calendarDay: calendarByAgent.get(agent.id) ?? null,
           })),
         ),
       })),

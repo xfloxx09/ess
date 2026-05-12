@@ -5,13 +5,10 @@ import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
 import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
-import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
+import type { AgentRow, CodeDef, PendingOp, RosterProjectPayload, SlotCell, TeamBlock } from "../roster-shared";
 import { immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
 
 type Project = { id: string; name: string };
-type CodeDef = { id: string; code: string; label: string; color: string };
-type AgentRow = { agentId: string; fullName: string; email: string; fte: number; slots: SlotCell[] };
-type TeamBlock = { teamId: string; teamName: string; agents: AgentRow[] };
 
 type SavedCell = {
   agentId: string;
@@ -752,22 +749,48 @@ export default function RosterDayPage() {
                           {row.email}
                         </div>
                         <div className="muted text-[0.7rem]">FTE {row.fte}</div>
+                        {row.calendarDay ? (
+                          <div
+                            className="roster-cal-day-badge mt-1 inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[0.65rem] font-semibold leading-tight"
+                            style={{
+                              borderColor: row.calendarDay.color,
+                              backgroundColor: `${row.calendarDay.color}33`,
+                              color: "#112033",
+                            }}
+                            title={`Kalender: ${row.calendarDay.label} (${row.calendarDay.code})`}
+                          >
+                            <span className="shrink-0 font-normal opacity-75">Kal.</span>
+                            <span className="truncate">{row.calendarDay.code}</span>
+                          </div>
+                        ) : null}
                       </td>
                       {slotIndices.map((slotIndex) => {
                         const slot = row.slots[slotIndex]!;
-                        const bg = slot.controllerCode ? (codeColors.get(slot.controllerCode) ?? "#dfe6ee") : "#f4f6f9";
-                        const show = slot.controllerCode ?? "·";
+                        const hasShift = !!(slot.controllerCode || slot.rawCode);
+                        const cal = row.calendarDay;
+                        const calHint = !!(cal && !hasShift);
+                        const bg = hasShift
+                          ? (codeColors.get(slot.controllerCode ?? slot.rawCode ?? "") ?? "#dfe6ee")
+                          : calHint
+                            ? cal.color
+                            : "#f4f6f9";
+                        const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
+                        const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
+                          calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
+                        } · Doppelklick = leeren · Rechtsklick = Menü`;
                         return (
                           <td
                             key={slot.slotIndex}
                             role="gridcell"
                             tabIndex={0}
-                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${slot.agreed ? "" : " roster-slot-warn"}`}
+                            className={`roster-slot-cell ctrl-roster-slot roster-slot-no-select${slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""}${
+                              hasShift && !slot.agreed ? " roster-slot-warn" : ""
+                            }${calHint ? " roster-slot-cal-hint" : ""}`}
                             style={{
-                              background: slot.controllerCode ? `${bg}55` : undefined,
-                              color: slot.controllerCode ? "#112033" : "#aab7c4",
+                              background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
+                              color: hasShift || calHint ? "#112033" : "#aab7c4",
                             }}
-                            title={`${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"} · Doppelklick = leeren · Rechtsklick = Menü`}
+                            title={slotTitle}
                             onContextMenu={(e) => openSlotMenu(e, row.agentId, slot, row.fte)}
                             onMouseDown={(e) => onSlotDown(row.agentId, slot, e)}
                             onDoubleClick={(e) => {

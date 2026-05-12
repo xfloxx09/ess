@@ -6,7 +6,16 @@ export type SlotCell = {
   agreed: boolean;
   version: number | null;
 };
-export type AgentRow = { agentId: string; fullName: string; email: string; fte: number; slots: SlotCell[] };
+/** Kalender-Tagesbuchung für die Matrix (Anzeige neben dem Agenten). */
+export type CalendarDayBadge = { code: string; label: string; color: string; category: string };
+export type AgentRow = {
+  agentId: string;
+  fullName: string;
+  email: string;
+  fte: number;
+  slots: SlotCell[];
+  calendarDay: CalendarDayBadge | null;
+};
 export type TeamBlock = { teamId: string; teamName: string; agents: AgentRow[] };
 export type PauseSeg = { workMinutes: number; pauseMinutes: number };
 export type RosterProjectPayload = {

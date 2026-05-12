@@ -508,6 +508,12 @@
     cursor: cell;
   }
 
+  /* Kalender-Ganztag in leeren Schichtplan-Zellen (nur Anzeige, kein Shiftplan-Cell) */
+  .roster-slot-cal-hint {
+    @apply font-semibold;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+  }
+
   .roster-agent-email {
     @apply text-[11px] font-normal text-muted-foreground;
   }
