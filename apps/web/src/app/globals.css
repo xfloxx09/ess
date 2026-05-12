@@ -538,7 +538,8 @@
     @apply border-l-primary/40 bg-muted/45;
   }
   .roster-matrix-slot-head-btn {
-    @apply m-0 w-full cursor-pointer appearance-none rounded-none border-0 p-0 text-center font-inherit;
+    @apply m-0 w-full cursor-pointer appearance-none rounded-none border-0 p-0 text-center;
+    font: inherit;
   }
   .roster-matrix-slot--lane {
     @apply border-r-0;
