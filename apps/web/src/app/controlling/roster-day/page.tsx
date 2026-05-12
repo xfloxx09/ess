@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
+import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
 import type { PendingOp, RosterProjectPayload, SlotCell } from "../roster-shared";
 import { immutPatchSlot, ROSTER_DAY_PROJECT_OPEN_ID, ROSTER_DAY_TIME_WINDOWS, slotStartLabel } from "../roster-shared";
 
@@ -28,6 +29,7 @@ export default function RosterDayPage() {
     roles: ["CONTROLLING", "ADMIN", "SCHICHTPLANUNG"],
     anyViews: ["controlling_roster_day"],
   });
+  const plannerWholeDay = usePlannerWholeDayBookingTypes(token);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -651,6 +653,11 @@ export default function RosterDayPage() {
           fte={menuTarget.scope === "day-slot" ? menuTarget.fte : undefined}
           data={data}
           onDone={loadProjectDay}
+          wholeDayBookingTypesState={{
+            loaded: plannerWholeDay.loaded,
+            types: plannerWholeDay.types,
+            error: plannerWholeDay.error,
+          }}
         />
       )}
 

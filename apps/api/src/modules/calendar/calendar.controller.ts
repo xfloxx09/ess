@@ -1,13 +1,21 @@
 import { BadRequestException, Body, Controller, Delete, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import type { AppViewKey, UserRole } from "@ess/shared";
 import { calendarBatchBookingSchema, calendarBookRequestSchema, calendarPlannerBookRequestSchema, calendarPlannerRemoveBookingSchema } from "@ess/shared";
 import type { CalendarBatchBookingDto, CalendarBookRequestDto, CalendarPlannerBookRequestDto, CalendarPlannerRemoveBookingDto } from "@ess/shared";
 import { Body$ } from "../../common/zod-validation.pipe";
 import { AuditService } from "../audit/audit.service";
+import { Access } from "../auth/access.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import type { RequestUser } from "../../common/authz.types";
 import { CalendarService } from "./calendar.service";
+
+/** Wie Schichtplan-Routen: Rolle oder Sicht Recht auf Tages-/Monatsmatrix → Kalender-Buchungsarten laden. */
+const CAL_BOOKING_TYPES_ACCESS = {
+  anyRoles: ["AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG"] as UserRole[],
+  anyViews: ["controlling_roster_day", "controlling_roster_month"] as AppViewKey[],
+};
 
 @Controller("calendar")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -52,7 +60,7 @@ export class CalendarController {
   }
 
   @Get("booking-types")
-  @Roles("AGENT", "ADMIN", "CONTROLLING", "SCHICHTPLANUNG")
+  @Access(CAL_BOOKING_TYPES_ACCESS)
   bookingTypes() {
     return this.calendar.listActiveBookingTypes();
   }

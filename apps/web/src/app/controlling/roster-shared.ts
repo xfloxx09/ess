@@ -24,6 +24,23 @@ export type PendingOp =
   | { kind: "set"; controllerCode: string; rawCode: string; expectedVersion?: number }
   | { kind: "clear" };
 
+/** Kalender-Buchungsart (API /calendar/booking-types) — für ganztägige Planner-Aktionen. */
+export type PlannerCalendarBookingTypeRow = {
+  id: string;
+  code: string;
+  label: string;
+  category: string;
+  allowsSplitShift: boolean;
+};
+
+/** Urlaub / Krank / Frei / SOS … ohne Früh-Spät-Zeitblöcke (ein Kalendereintrag pro Tag). */
+export function isPlannerWholeDayBookingType(bt: PlannerCalendarBookingTypeRow): boolean {
+  if (bt.allowsSplitShift) return false;
+  if (bt.category === "VACATION" || bt.category === "SICK") return true;
+  if (bt.category === "SHIFT" && !["FR", "SN", "SPLIT"].includes(bt.code)) return true;
+  return false;
+}
+
 export function slotStartLabel(slot: number): string {
   const m = slot * 15;
   const h = Math.floor(m / 60);

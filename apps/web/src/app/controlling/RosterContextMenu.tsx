@@ -4,17 +4,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { toMessage } from "../../lib/auth";
-import type { PauseSeg, RosterProjectPayload } from "./roster-shared";
+import type { PauseSeg, PlannerCalendarBookingTypeRow, RosterProjectPayload } from "./roster-shared";
 import { buildFteSlots, findAgentInPayload, slotIndexToTimeString, timeToSlotIndex } from "./roster-shared";
-
-type PlannerBookingTypeRow = { id: string; code: string; label: string; category: string; allowsSplitShift: boolean };
-
-function isPlannerWholeDayBookingType(bt: PlannerBookingTypeRow): boolean {
-  if (bt.allowsSplitShift) return false;
-  if (bt.category === "VACATION" || bt.category === "SICK") return true;
-  if (bt.category === "SHIFT" && !["FR", "SN", "SPLIT"].includes(bt.code)) return true;
-  return false;
-}
 
 export type RosterMenuTarget =
   | { scope: "day-slot"; agentId: string; slotIndex: number; fte: number }
@@ -38,6 +29,8 @@ type Props = {
   onDone: () => void | Promise<void>;
   /** Optional: e.g. "Schicht bearbeiten" for month view */
   extraActions?: ReactNode;
+  /** Ganztägige Kalender-Buchungsarten (von der Seite vorgeladen). */
+  wholeDayBookingTypesState: { loaded: boolean; types: PlannerCalendarBookingTypeRow[]; error: string | null };
 };
 
 export function RosterContextMenu({
@@ -54,6 +47,7 @@ export function RosterContextMenu({
   data,
   onDone,
   extraActions,
+  wholeDayBookingTypesState,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<"none" | "copyDay" | "copyMonth">("none");
@@ -65,23 +59,6 @@ export function RosterContextMenu({
   const [err, setErr] = useState("");
   const [loadedPlanner, setLoadedPlanner] = useState<{ targetDayMinutes: number; pausePattern: PauseSeg[] } | null>(null);
   const [loadedFte, setLoadedFte] = useState<number | null>(null);
-  const [plannerBookingTypes, setPlannerBookingTypes] = useState<PlannerBookingTypeRow[] | null>(null);
-
-  useEffect(() => {
-    if (!open || !token) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const rows = await api<PlannerBookingTypeRow[]>("/calendar/booking-types", undefined, token);
-        if (!cancelled) setPlannerBookingTypes(rows.filter(isPlannerWholeDayBookingType));
-      } catch {
-        if (!cancelled) setPlannerBookingTypes([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, token]);
 
   useEffect(() => {
     if (!open || !target) return;
@@ -356,12 +333,14 @@ export function RosterContextMenu({
       <p className="px-2 pb-1 text-[0.6rem] leading-snug text-muted-foreground">
         Zählt als <strong className="text-foreground">ein Tag</strong> (Kalenderbuchung). Leert die Schichtplan-Zellen für diesen Tag — keine Codes in jedem Viertelstundenfeld.
       </p>
-      {plannerBookingTypes === null ? (
+      {!wholeDayBookingTypesState.loaded ? (
         <p className="muted px-2 py-1 text-xs">Lade Buchungsarten…</p>
-      ) : plannerBookingTypes.length === 0 ? (
+      ) : wholeDayBookingTypesState.error ? (
+        <p className="status-bad px-2 py-1 text-xs">{wholeDayBookingTypesState.error}</p>
+      ) : wholeDayBookingTypesState.types.length === 0 ? (
         <p className="muted px-2 py-1 text-xs">Keine ganztägigen Buchungsarten.</p>
       ) : (
-        plannerBookingTypes.map((bt) => (
+        wholeDayBookingTypesState.types.map((bt) => (
           <button
             key={bt.id}
             type="button"

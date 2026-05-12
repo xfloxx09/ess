@@ -5,6 +5,7 @@ import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
 import { RosterAgentDayModal } from "../RosterAgentDayModal";
 import { RosterContextMenu, type RosterMenuTarget } from "../RosterContextMenu";
+import { usePlannerWholeDayBookingTypes } from "../usePlannerWholeDayBookingTypes";
 
 type Project = { id: string; name: string };
 type DayCell = {
@@ -39,6 +40,7 @@ export default function RosterMonthPage() {
     roles: ["CONTROLLING", "ADMIN", "SCHICHTPLANUNG"],
     anyViews: ["controlling_roster_month"],
   });
+  const plannerWholeDay = usePlannerWholeDayBookingTypes(token);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -132,6 +134,11 @@ export default function RosterMonthPage() {
           fte={undefined}
           data={null}
           onDone={loadMonth}
+          wholeDayBookingTypesState={{
+            loaded: plannerWholeDay.loaded,
+            types: plannerWholeDay.types,
+            error: plannerWholeDay.error,
+          }}
           extraActions={
             <button
               type="button"
