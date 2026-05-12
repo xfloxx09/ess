@@ -78,17 +78,17 @@ export function RosterDayTeamMatrix({
             Agent
           </div>
           {bandCells}
-          {slotIndices.map((s) => (
+          {slotIndices.map((s, colIdx) => (
             <div
               key={s}
               data-slot-head={s}
-              className={`roster-matrix-slot-head flex items-end justify-center border-b border-border bg-muted/55 pb-0.5 pt-1 text-[10px] font-medium leading-none text-muted-foreground${
+              className={`roster-matrix-slot-head flex min-w-0 items-end justify-center overflow-hidden border-b border-r border-border/40 bg-muted/55 px-px pb-1 pt-1 text-[10px] font-medium tabular-nums leading-none tracking-wide text-muted-foreground${
                 s % 4 === 0 ? " roster-slot-on-hour" : ""
               }`}
-              style={{ gridColumn: s + 2, gridRow: 2 }}
+              style={{ gridColumn: colIdx + 2, gridRow: 2 }}
               title={slotStartLabel(s)}
             >
-              {s % 4 === 0 ? "" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}
+              <span className="block max-w-full truncate">{s % 4 === 0 ? "·" : s % 4 === 1 ? "15" : s % 4 === 2 ? "30" : "45"}</span>
             </div>
           ))}
         </div>
@@ -145,7 +145,7 @@ export function RosterDayTeamMatrix({
                   </div>
                 ) : null}
               </div>
-              {slotIndices.map((slotIndex) => {
+              {slotIndices.map((slotIndex, colIdx) => {
                 const slot = row.slots[slotIndex]!;
                 const selKey = rosterSlotKey(row.agentId, slotIndex);
                 const isSelected = selectedKeys.has(selKey);
@@ -158,6 +158,8 @@ export function RosterDayTeamMatrix({
                     ? cal.color
                     : "#f4f6f9";
                 const show = hasShift ? (slot.controllerCode ?? slot.rawCode ?? "·") : calHint ? cal.code : "·";
+                const rawMismatch =
+                  hasShift && !!slot.rawCode && !!slot.controllerCode && slot.rawCode !== slot.controllerCode;
                 const slotTitle = `${slotStartLabel(slotIndex)} · Ctrl: ${slot.controllerCode ?? "—"} · Roh: ${slot.rawCode ?? "—"}${
                   calHint ? ` · Kalender: ${cal.label} (${cal.code})` : ""
                 } · Ziehen = Block · Strg/⌘+Klick · Umschalt+Ziehen · Enter/Leer · Rechtsklick`;
@@ -169,13 +171,13 @@ export function RosterDayTeamMatrix({
                     data-roster-cell="1"
                     data-roster-agent={row.agentId}
                     data-roster-slot-index={slotIndex}
-                    className={`roster-matrix-slot flex min-h-[44px] cursor-cell select-none items-center justify-center border-r border-border/50 text-center text-[11px] font-semibold tabular-nums leading-none outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ctrl-roster-slot roster-slot-no-select${
+                    className={`roster-matrix-slot flex min-h-[44px] min-w-0 cursor-cell select-none items-stretch justify-center border-r border-border/50 text-center text-[11px] font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ctrl-roster-slot roster-slot-no-select${
                       slotIndex % 4 === 0 ? " roster-slot-on-hour" : ""
                     }${hasShift && !slot.agreed ? " roster-slot-warn" : ""}${calHint ? " roster-slot-cal-hint" : ""}${
                       isSelected ? " roster-slot-selected" : ""
                     } ${zebra ? "roster-matrix-slot--zebra-even" : "roster-matrix-slot--zebra-odd"}`}
                     style={{
-                      gridColumn: slotIndex + 2,
+                      gridColumn: colIdx + 2,
                       background: hasShift ? `${bg}55` : calHint ? `${bg}44` : undefined,
                       color: hasShift || calHint ? "#112033" : "#94a3b8",
                     }}
@@ -189,7 +191,17 @@ export function RosterDayTeamMatrix({
                       }
                     }}
                   >
-                    {show}
+                    <div className="flex min-h-0 w-full min-w-0 flex-col items-center justify-center gap-px px-0.5 py-1">
+                      <span className="max-w-full truncate tracking-wide">{show}</span>
+                      {rawMismatch ? (
+                        <span
+                          className="max-w-full truncate text-[9px] font-semibold leading-none tracking-wide text-destructive/95"
+                          title={`Roh: ${slot.rawCode}`}
+                        >
+                          {slot.rawCode}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}

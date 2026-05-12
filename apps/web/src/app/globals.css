@@ -458,7 +458,10 @@
   }
 
   .roster-ctx-menu {
-    @apply z-[2000] flex flex-col gap-0.5 p-2 text-sm shadow-lg;
+    @apply z-[2000] flex flex-col gap-0 p-2 text-sm shadow-lg;
+  }
+  .roster-ctx-section {
+    @apply border-b border-border/70 py-1.5 last:border-b-0;
   }
   .roster-ctx-item {
     @apply w-full cursor-pointer rounded border-0 bg-transparent px-2 py-1.5 text-left text-foreground hover:bg-muted;

@@ -1,11 +1,30 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { toMessage } from "../../lib/auth";
 import type { PauseSeg, PlannerCalendarBookingTypeRow, RosterProjectPayload } from "./roster-shared";
 import { buildFteSlots, findAgentInPayload, slotIndexToTimeString, timeToSlotIndex } from "./roster-shared";
+
+const BOOKING_CAT_ORDER = ["SHIFT", "VACATION", "SICK"] as const;
+
+function bookingCategoryTitle(cat: string): string {
+  if (cat === "SHIFT") return "Schicht / Frei";
+  if (cat === "VACATION") return "Urlaub";
+  if (cat === "SICK") return "Krank";
+  return "Sonstige";
+}
+
+function CtxSection({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="roster-ctx-section">
+      <div className="px-2 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground">{title}</div>
+      {hint ? <p className="px-2 pb-1.5 text-[0.62rem] leading-snug text-muted-foreground">{hint}</p> : null}
+      <div className="flex flex-col gap-0.5">{children}</div>
+    </div>
+  );
+}
 
 export type RosterMenuTarget =
   | { scope: "day-slot"; agentId: string; slotIndex: number; fte: number }
@@ -141,6 +160,24 @@ export function RosterContextMenu({
     },
     [onClose, onDone],
   );
+
+  const groupedCalendarTypes = useMemo(() => {
+    const types = wholeDayBookingTypesState.types;
+    const buckets = new Map<string, PlannerCalendarBookingTypeRow[]>();
+    for (const t of types) {
+      const cat = (BOOKING_CAT_ORDER as readonly string[]).includes(t.category) ? t.category : "OTHER";
+      if (!buckets.has(cat)) buckets.set(cat, []);
+      buckets.get(cat)!.push(t);
+    }
+    const out: { cat: string; types: PlannerCalendarBookingTypeRow[] }[] = [];
+    for (const cat of BOOKING_CAT_ORDER) {
+      const arr = buckets.get(cat);
+      if (arr?.length) out.push({ cat, types: arr });
+    }
+    const other = buckets.get("OTHER");
+    if (other?.length) out.push({ cat: "OTHER", types: other });
+    return out;
+  }, [wholeDayBookingTypesState.types]);
 
   if (!open || !target) return null;
 
@@ -282,121 +319,149 @@ export function RosterContextMenu({
 
   const menuStyle: CSSProperties = {
     position: "fixed",
-    left: Math.min(x, typeof window !== "undefined" ? window.innerWidth - 300 : x),
-    top: Math.min(y, typeof window !== "undefined" ? window.innerHeight - 360 : y),
+    left: Math.min(x, typeof window !== "undefined" ? window.innerWidth - 340 : x),
+    top: Math.min(y, typeof window !== "undefined" ? window.innerHeight - 400 : y),
     zIndex: 2000,
-    minWidth: 220,
-    maxWidth: 300,
-    maxHeight: "min(70vh, 420px)",
+    minWidth: 260,
+    maxWidth: 340,
+    maxHeight: "min(78vh, 520px)",
     overflowY: "auto",
   };
 
   return (
     <div ref={ref} className="roster-ctx-menu panel" style={menuStyle} onContextMenu={(e) => e.preventDefault()}>
-      {err && <p className="status-bad" style={{ fontSize: "0.75rem", margin: "0 0 0.35rem" }}>{err}</p>}
-      {extraActions}
-      {extraActions && <hr className="roster-ctx-hr" />}
-      {monthMetaLoading && <p className="muted px-2 py-1 text-xs">Lade Plan…</p>}
-      {target.scope === "day-slot" && (
-        <>
+      {err ? (
+        <p className="status-bad px-2 pb-2 pt-0.5" style={{ fontSize: "0.75rem", margin: 0 }}>
+          {err}
+        </p>
+      ) : null}
+
+      {extraActions ? <CtxSection title="Aktion">{extraActions}</CtxSection> : null}
+
+      {monthMetaLoading ? (
+        <div className="px-2 py-1">
+          <p className="muted text-xs">Lade Plan…</p>
+        </div>
+      ) : null}
+
+      {target.scope === "day-slot" ? (
+        <CtxSection title="Diese Zelle" hint="Nur die gewählte Viertelstunde.">
           <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => clearThisSlot()}>
             Zelle leeren
           </button>
           <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => mirrorThisSlot()}>
-            Roh = Ctrl (diese Zelle)
+            Rohdaten = Steuerung
           </button>
-        </>
-      )}
-      {target.scope === "month-cell" && (
-        <div className="roster-ctx-field">
-          <label>Start (FTE)</label>
-          <input type="time" step={900} value={fteTime} onChange={(e) => setFteTime(e.target.value)} disabled={busy} />
-        </div>
-      )}
-      <button
-        type="button"
-        className="roster-ctx-item"
-        disabled={busy || monthMetaLoading}
-        title={
-          target.scope === "day-slot"
-            ? "Füllt Arbeit und Pause gemäß FTE-Soll ab dieser Viertelstunde."
-            : "Füllt Arbeit und Pause gemäß FTE-Soll für diesen Tag (Startzeit oben einstellbar)."
-        }
-        onClick={() => fteFillThisAgent()}
+        </CtxSection>
+      ) : null}
+
+      <CtxSection
+        title="FTE & Schicht"
+        hint="Ab Start-Viertelstunde (Tag) bzw. Uhrzeit (Monat) wird der Soll-Tag mit Pausen laut Projekt gefüllt."
       >
-        Schicht hinzufügen
-      </button>
-      <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => clearFullDayAgent()}>
-        Ganzen Tag für diesen Agenten leeren
-      </button>
-      <div className="px-2 pt-1 text-[0.65rem] font-medium text-muted-foreground">Kalender (ganzer Tag)</div>
-      <p className="px-2 pb-1 text-[0.6rem] leading-snug text-muted-foreground">
-        Zählt als <strong className="text-foreground">ein Tag</strong> (Kalenderbuchung). Leert die Schichtplan-Zellen für diesen Tag — keine Codes in jedem Viertelstundenfeld.
-      </p>
-      {!wholeDayBookingTypesState.loaded ? (
-        <p className="muted px-2 py-1 text-xs">Lade Buchungsarten…</p>
-      ) : wholeDayBookingTypesState.error ? (
-        <p className="status-bad px-2 py-1 text-xs">{wholeDayBookingTypesState.error}</p>
-      ) : wholeDayBookingTypesState.types.length === 0 ? (
-        <p className="muted px-2 py-1 text-xs">Keine ganztägigen Buchungsarten.</p>
-      ) : (
-        wholeDayBookingTypesState.types.map((bt) => (
-          <button
-            key={bt.id}
-            type="button"
-            className="roster-ctx-item"
-            disabled={busy}
-            title={`${bt.label} (${bt.code})`}
-            onClick={() => plannerSetWholeDayBooking(bt.id)}
-          >
-            {bt.label}
-          </button>
-        ))
-      )}
-      <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => plannerRemoveCalendarDay()}>
-        Kalenderbuchung für Tag entfernen
-      </button>
-      <hr className="roster-ctx-hr" />
-      {sub === "none" && (
-        <>
-          <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyDay")}>
-            Tag kopieren…
-          </button>
-          <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyMonth")}>
-            Monat kopieren…
-          </button>
-        </>
-      )}
-      {sub === "copyDay" && (
-        <div className="roster-ctx-sub">
-          <label>Von Datum</label>
-          <input type="date" value={copyFromDate} onChange={(e) => setCopyFromDate(e.target.value)} disabled={busy} />
-          <span className="muted" style={{ fontSize: "0.7rem" }}>
-            → {workDate}
-          </span>
-          <button type="button" className="roster-ctx-item roster-ctx-primary" disabled={busy} onClick={() => doCopyDay()}>
-            Ausführen
-          </button>
-          <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("none")}>
-            Zurück
-          </button>
-        </div>
-      )}
-      {sub === "copyMonth" && (
-        <div className="roster-ctx-sub">
-          <label>Von</label>
-          <input type="month" value={copyFromMonth} onChange={(e) => setCopyFromMonth(e.target.value)} disabled={busy} />
-          <label>Nach</label>
-          <input type="month" value={copyToMonth} onChange={(e) => setCopyToMonth(e.target.value)} disabled={busy} />
-          <button type="button" className="roster-ctx-item roster-ctx-primary" disabled={busy} onClick={() => doCopyMonth()}>
-            Ausführen
-          </button>
-          <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("none")}>
-            Zurück
-          </button>
-        </div>
-      )}
-      {busy && <p className="muted" style={{ fontSize: "0.75rem" }}>Bitte warten…</p>}
+        {target.scope === "month-cell" ? (
+          <div className="roster-ctx-field px-2">
+            <label>Startzeit (FTE)</label>
+            <input type="time" step={900} value={fteTime} onChange={(e) => setFteTime(e.target.value)} disabled={busy} />
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className="roster-ctx-item"
+          disabled={busy || monthMetaLoading}
+          title={
+            target.scope === "day-slot"
+              ? "Füllt Arbeit und Pause gemäß FTE-Soll ab dieser Viertelstunde."
+              : "Füllt Arbeit und Pause gemäß FTE-Soll für diesen Tag (Startzeit oben einstellbar)."
+          }
+          onClick={() => fteFillThisAgent()}
+        >
+          Schicht hinzufügen
+        </button>
+        <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => clearFullDayAgent()}>
+          Ganzen Tag für Agent leeren
+        </button>
+      </CtxSection>
+
+      <CtxSection
+        title="Kalender (Ganztag)"
+        hint="Ein Kalendereintrag pro Tag. Leert die Schichtplan-Zellen für diesen Tag (keine Viertelstunden-Codes)."
+      >
+        {!wholeDayBookingTypesState.loaded ? (
+          <p className="muted px-2 py-1 text-xs">Lade Buchungsarten…</p>
+        ) : wholeDayBookingTypesState.error ? (
+          <p className="status-bad px-2 py-1 text-xs">{wholeDayBookingTypesState.error}</p>
+        ) : wholeDayBookingTypesState.types.length === 0 ? (
+          <p className="muted px-2 py-1 text-xs">Keine ganztägigen Buchungsarten.</p>
+        ) : (
+          groupedCalendarTypes.map(({ cat, types }) => (
+            <div key={cat} className="pb-1">
+              <div className="px-2 pb-0.5 text-[0.62rem] font-medium text-muted-foreground">{bookingCategoryTitle(cat)}</div>
+              {types.map((bt) => (
+                <button
+                  key={bt.id}
+                  type="button"
+                  className="roster-ctx-item"
+                  disabled={busy}
+                  title={`${bt.label} (${bt.code})`}
+                  onClick={() => plannerSetWholeDayBooking(bt.id)}
+                >
+                  {bt.label}
+                </button>
+              ))}
+            </div>
+          ))
+        )}
+        <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => plannerRemoveCalendarDay()}>
+          Kalenderbuchung entfernen
+        </button>
+      </CtxSection>
+
+      <CtxSection title="Projekt kopieren" hint="Alle Agenten des Projekts (Schichtplan-Daten).">
+        {sub === "none" ? (
+          <>
+            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyDay")}>
+              Tag kopieren…
+            </button>
+            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("copyMonth")}>
+              Monat kopieren…
+            </button>
+          </>
+        ) : null}
+        {sub === "copyDay" ? (
+          <div className="roster-ctx-sub px-2">
+            <label>Von Datum</label>
+            <input type="date" value={copyFromDate} onChange={(e) => setCopyFromDate(e.target.value)} disabled={busy} />
+            <span className="muted text-[0.7rem]">→ {workDate}</span>
+            <button type="button" className="roster-ctx-item roster-ctx-primary" disabled={busy} onClick={() => doCopyDay()}>
+              Ausführen
+            </button>
+            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("none")}>
+              Zurück
+            </button>
+          </div>
+        ) : null}
+        {sub === "copyMonth" ? (
+          <div className="roster-ctx-sub px-2">
+            <label>Von</label>
+            <input type="month" value={copyFromMonth} onChange={(e) => setCopyFromMonth(e.target.value)} disabled={busy} />
+            <label>Nach</label>
+            <input type="month" value={copyToMonth} onChange={(e) => setCopyToMonth(e.target.value)} disabled={busy} />
+            <button type="button" className="roster-ctx-item roster-ctx-primary" disabled={busy} onClick={() => doCopyMonth()}>
+              Ausführen
+            </button>
+            <button type="button" className="roster-ctx-item" disabled={busy} onClick={() => setSub("none")}>
+              Zurück
+            </button>
+          </div>
+        ) : null}
+      </CtxSection>
+
+      {busy ? (
+        <p className="muted px-2 pb-1" style={{ fontSize: "0.75rem", margin: 0 }}>
+          Bitte warten…
+        </p>
+      ) : null}
     </div>
   );
 }

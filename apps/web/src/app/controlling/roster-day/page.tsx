@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../lib/api";
 import { toMessage, useRequireAuth } from "../../../lib/auth";
@@ -59,6 +60,8 @@ export default function RosterDayPage() {
   const [agentSearch, setAgentSearch] = useState("");
   /** Während Linksklick-Zieh-Auswahl: Virtualizer rendert mehr Zeilen (Treffer unter dem Cursor). */
   const [rosterDragBoost, setRosterDragBoost] = useState(false);
+  /** Team-Matrizen per Klick ein- und ausblenden (Übersicht bei vielen Teams). */
+  const [collapsedTeamIds, setCollapsedTeamIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -108,10 +111,12 @@ export default function RosterDayPage() {
       .filter((t) => teamFilterId === "all" || t.teamId === teamFilterId)
       .map((team) => ({
         ...team,
-        agents: team.agents.filter((a) => {
-          if (!q) return true;
-          return a.fullName.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
-        }),
+        agents: team.agents
+          .filter((a) => {
+            if (!q) return true;
+            return a.fullName.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
+          })
+          .sort((a, b) => a.fullName.localeCompare(b.fullName, "de", { sensitivity: "base" })),
       }))
       .filter((t) => t.agents.length > 0);
   }, [data, teamFilterId, agentSearch]);
@@ -188,6 +193,7 @@ export default function RosterDayPage() {
   useEffect(() => {
     setTeamFilterId("all");
     setTimeScope("all");
+    setCollapsedTeamIds(new Set());
   }, [projectId]);
 
   useEffect(() => {
@@ -634,7 +640,9 @@ export default function RosterDayPage() {
                   </select>
                 </label>
                 <label className="ctrl-roster-field min-w-[10rem] flex-1">
-                  <span>Agent suchen</span>
+                  <span>
+                    Agent suchen <span className="font-normal text-muted-foreground">(Sortierung A–Z)</span>
+                  </span>
                   <input type="search" placeholder="Name oder E-Mail…" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />
                 </label>
               </div>
@@ -751,28 +759,55 @@ export default function RosterDayPage() {
       )}
 
       {data &&
-        displayTeams.map((team: TeamBlock) => (
-          <section key={team.teamId} className="ctrl-roster-team panel">
-            <div className="ctrl-roster-team__head flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="m-0">{team.teamName}</h3>
-              <span className="muted text-sm">
-                {team.agents.length} Agenten · Raster {slotStartLabel(slotIndices[0] ?? 0)}–{slotStartLabel(slotIndices[slotIndices.length - 1] ?? 0)} (
-                {slotIndices.length} Viertelstunden · volle Breite)
-              </span>
-            </div>
-            <RosterDayTeamMatrix
-              team={team}
-              slotIndices={slotIndices}
-              hourBandGroups={hourBandGroups}
-              selectedKeys={selectedKeys}
-              codeColors={codeColors}
-              rosterDragBoost={rosterDragBoost}
-              beginSlotDrag={beginSlotDrag}
-              toggleSlotInSelection={toggleSlotInSelection}
-              openSlotMenu={openSlotMenu}
-            />
-          </section>
-        ))}
+        displayTeams.map((team: TeamBlock) => {
+          const teamCollapsed = collapsedTeamIds.has(team.teamId);
+          return (
+            <section key={team.teamId} className="ctrl-roster-team panel">
+              <div className="ctrl-roster-team__head flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 p-1 text-foreground hover:bg-muted"
+                    aria-expanded={!teamCollapsed}
+                    title={teamCollapsed ? "Team-Matrix aufklappen" : "Team-Matrix zuklappen"}
+                    onClick={() =>
+                      setCollapsedTeamIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(team.teamId)) next.delete(team.teamId);
+                        else next.add(team.teamId);
+                        return next;
+                      })
+                    }
+                  >
+                    {teamCollapsed ? <ChevronRight className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                  </button>
+                  <h3 className="m-0 min-w-0 truncate">{team.teamName}</h3>
+                </div>
+                <span className="muted text-sm">
+                  {team.agents.length} Agenten · Raster {slotStartLabel(slotIndices[0] ?? 0)}–{slotStartLabel(slotIndices[slotIndices.length - 1] ?? 0)} (
+                  {slotIndices.length} Viertelstunden)
+                </span>
+              </div>
+              {teamCollapsed ? (
+                <p className="mb-0 mt-2 text-sm text-muted-foreground">
+                  Matrix ausgeblendet — auf das Pfeilsymbol links neben dem Teamnamen klicken, um die Zeilen wieder anzuzeigen.
+                </p>
+              ) : (
+                <RosterDayTeamMatrix
+                  team={team}
+                  slotIndices={slotIndices}
+                  hourBandGroups={hourBandGroups}
+                  selectedKeys={selectedKeys}
+                  codeColors={codeColors}
+                  rosterDragBoost={rosterDragBoost}
+                  beginSlotDrag={beginSlotDrag}
+                  toggleSlotInSelection={toggleSlotInSelection}
+                  openSlotMenu={openSlotMenu}
+                />
+              )}
+            </section>
+          );
+        })}
     </div>
   );
 }
