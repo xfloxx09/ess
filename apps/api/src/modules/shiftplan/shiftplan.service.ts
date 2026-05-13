@@ -212,7 +212,23 @@ export class ShiftplanService {
               const worked = dayCells.some((c) => c.controllerCode === "A");
               const present = dayCells.length > 0;
               const disagreed = dayCells.filter((c) => c.controllerCode !== c.rawCode).length;
-              return { date: dayDate, present, worked, aAgreedSlots: aAgreed, cellCount: dayCells.length, disagreedSlots: disagreed };
+              const ctrlMap = new Map<string, number>();
+              for (const c of dayCells) {
+                const code = (c.controllerCode ?? "").trim() || "?";
+                ctrlMap.set(code, (ctrlMap.get(code) ?? 0) + 1);
+              }
+              const byControllerCode = [...ctrlMap.entries()]
+                .map(([code, count]) => ({ code, count }))
+                .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+              return {
+                date: dayDate,
+                present,
+                worked,
+                aAgreedSlots: aAgreed,
+                cellCount: dayCells.length,
+                disagreedSlots: disagreed,
+                byControllerCode,
+              };
             });
             return { agentId: agent.id, fullName: agent.fullName, email: agent.email, days };
           }),

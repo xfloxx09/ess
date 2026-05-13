@@ -15,6 +15,8 @@ type DayCell = {
   aAgreedSlots: number;
   cellCount: number;
   disagreedSlots: number;
+  /** Controller-Codes mit Slot-Anzahl (absteigend), von der API */
+  byControllerCode?: Array<{ code: string; count: number }>;
 };
 type AgentMonthRow = { agentId: string; fullName: string; email: string; days: DayCell[] };
 type TeamMonthBlock = { teamId: string; teamName: string; agents: AgentMonthRow[] };
@@ -43,6 +45,41 @@ function monthCellSelKey(agentId: string, date: string): string {
 function parseMonthSelKey(key: string): MonthBulkCell {
   const i = key.indexOf("|");
   return { agentId: key.slice(0, i), date: key.slice(i + 1) };
+}
+
+/** Tooltip: alle Codes mit Anzahl */
+function monthDayDetailTitle(d: DayCell): string {
+  if (!d.present) {
+    return `${d.date} — kein Schichtplan (keine Zellen)`;
+  }
+  const codes = d.byControllerCode ?? [];
+  if (codes.length === 0) {
+    return `${d.date} — ${d.cellCount} Zelle(n)`;
+  }
+  const parts = codes.map((x) => `${x.code}: ${x.count}×`);
+  const disag = d.disagreedSlots > 0 ? ` · Abweichungen Ctrl/Roh: ${d.disagreedSlots}` : "";
+  return `${d.date} — ${parts.join(" · ")}${disag}`;
+}
+
+/** Kurztext in der Zelle (1 Zeile) */
+function monthDayGlyph(d: DayCell): string {
+  if (!d.present) {
+    return "–";
+  }
+  const list = d.byControllerCode ?? [];
+  if (list.length === 0) {
+    return d.worked ? "A" : "·";
+  }
+  if (list.length === 1) {
+    const c = list[0]!.code;
+    return c.length <= 4 ? c : `${c.slice(0, 3)}…`;
+  }
+  const a = list[0]!.code.slice(0, 2);
+  const b = list[1]!.code.slice(0, 2);
+  if (list.length === 2) {
+    return `${a}/${b}`;
+  }
+  return `${a}/${b}+${list.length - 2}`;
 }
 
 export default function RosterMonthPage() {
@@ -136,10 +173,9 @@ export default function RosterMonthPage() {
       <div className="page-head">
         <h2>Monatsschichtplan</h2>
         <p>
-          Pro Tag ein Kästchen: <strong>grün</strong> = A, <strong>grau</strong> = leer, <strong>gelb</strong> = ohne A, <strong>rand rot</strong> =
-          Abweichungen. <strong>Strg</strong>/<strong>⌘</strong>+Klick markiert mehrere Tage; Rechtsklick wendet Schicht/Kalender auf alle Markierten an.{" "}
-          <strong>Linksklick</strong> (ohne Strg) öffnet die Tagesmatrix. Die Tabelle nutzt die volle Breite — kein horizontales Scrollen für den Monat.{" "}
-          <kbd className="rounded border bg-muted px-1 py-0.5 text-[0.8em]">Esc</kbd> hebt die Markierung auf. Kalender-Auswertung: <strong>Schichtplan → Bericht</strong>.
+          Pro Tag: <strong>–</strong> = leer, sonst <strong>Controller-Codes</strong> aus dem Schichtplan (z. B. <strong>A</strong>, <strong>FR/SN</strong> bei
+          Mischung). Tooltip zeigt alle Codes mit Anzahl. <strong>!</strong> = Abweichungen Ctrl/Roh. <strong>Strg</strong>/<strong>⌘</strong>+Klick markiert mehrere Tage;{" "}
+          <strong>Rechtsklick</strong> = Schnellmenü. <strong>Linksklick</strong> = Tagesmatrix.
         </p>
       </div>
 
@@ -279,7 +315,7 @@ export default function RosterMonthPage() {
                         if (selected) {
                           cls += " roster-month-cell--selected";
                         }
-                        const title = `${d.date} — Linksklick: Matrix · Strg+Klick: markieren · Rechtsklick: Menü (Mehrfach)`;
+                        const title = `${monthDayDetailTitle(d)} — Linksklick: Matrix · Strg+Klick: markieren · Rechtsklick: Menü (Mehrfach)`;
                         return (
                           <td
                             key={d.date}
@@ -322,7 +358,14 @@ export default function RosterMonthPage() {
                                 });
                               }}
                             >
-                              {d.worked ? "A" : d.present ? "·" : ""}
+                              <span className="roster-month-cell-inner flex min-w-0 flex-row items-center justify-center gap-0.5">
+                                <span className="min-w-0 truncate text-center font-semibold leading-tight tracking-tight">{monthDayGlyph(d)}</span>
+                                {d.disagreedSlots > 0 ? (
+                                  <span className="shrink-0 text-[0.55rem] font-bold leading-none text-destructive" title="Abweichung Control vs. Roh">
+                                    !
+                                  </span>
+                                ) : null}
+                              </span>
                             </button>
                           </td>
                         );
