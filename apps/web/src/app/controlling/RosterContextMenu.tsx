@@ -54,6 +54,8 @@ type Props = {
   wholeDayBookingTypesState: { loaded: boolean; types: PlannerCalendarBookingTypeRow[]; error: string | null };
   /** Monatsansicht: mehrere Zellen — Aktionen nacheinander auf alle anwenden (Rechtsklick mit Auswahl). */
   monthBulkTargets?: MonthBulkCell[];
+  /** z-index fürs Menü (z. B. 2300 über dem Matrix-Modal 2100). */
+  menuZIndex?: number;
 };
 
 export function RosterContextMenu({
@@ -72,6 +74,7 @@ export function RosterContextMenu({
   extraActions,
   wholeDayBookingTypesState,
   monthBulkTargets,
+  menuZIndex = 2000,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<"none" | "copyDay" | "copyMonth">("none");
@@ -391,7 +394,7 @@ export function RosterContextMenu({
     position: "fixed",
     left: Math.min(x, typeof window !== "undefined" ? window.innerWidth - 340 : x),
     top: Math.min(y, typeof window !== "undefined" ? window.innerHeight - 400 : y),
-    zIndex: 2000,
+    zIndex: menuZIndex,
     minWidth: 260,
     maxWidth: 340,
     maxHeight: "min(78vh, 520px)",

@@ -275,16 +275,21 @@ export default function RosterMonthPage() {
                           cls += " roster-month-disagree";
                         }
                         const key = monthCellSelKey(agent.agentId, d.date);
-                        if (selectedMonthKeys.has(key)) {
+                        const selected = selectedMonthKeys.has(key);
+                        if (selected) {
                           cls += " roster-month-cell--selected";
                         }
                         const title = `${d.date} — Linksklick: Matrix · Strg+Klick: markieren · Rechtsklick: Menü (Mehrfach)`;
                         return (
-                          <td key={d.date} className="roster-month-cell-wrap">
+                          <td
+                            key={d.date}
+                            className={`roster-month-cell-wrap${selected ? " roster-month-cell-wrap--selected" : ""}`}
+                          >
                             <button
                               type="button"
                               className={cls}
                               title={title}
+                              aria-pressed={selected}
                               onClick={(e) => {
                                 if (e.ctrlKey || e.metaKey) {
                                   e.preventDefault();

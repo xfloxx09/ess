@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { toMessage } from "../../lib/auth";
+import { RosterContextMenu, type RosterMenuTarget } from "./RosterContextMenu";
+import { usePlannerWholeDayBookingTypes } from "./usePlannerWholeDayBookingTypes";
 import type { PendingOp, RosterProjectPayload, SlotCell } from "./roster-shared";
 import { findAgentInPayload, immutPatchSlot, slotStartLabel } from "./roster-shared";
 
@@ -29,11 +31,15 @@ type Props = {
 };
 
 export function RosterAgentDayModal({ token, open, projectId, date, agentId, agentLabel, onClose, onSaved }: Props) {
+  const plannerWholeDay = usePlannerWholeDayBookingTypes(token);
   const [data, setData] = useState<RosterProjectPayload | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [activeTool, setActiveTool] = useState<Tool>({ kind: "code", code: "A" });
   const [preserveRaw, setPreserveRaw] = useState(true);
+  const [slotMenuOpen, setSlotMenuOpen] = useState(false);
+  const [slotMenuPos, setSlotMenuPos] = useState({ x: 0, y: 0 });
+  const [slotMenuTarget, setSlotMenuTarget] = useState<RosterMenuTarget | null>(null);
   const dragRef = useRef(false);
   const pendingRef = useRef<Map<string, Map<number, PendingOp>>>(new Map());
   const dataRef = useRef<RosterProjectPayload | null>(null);
@@ -54,6 +60,13 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
       setData(null);
     }
   }, [open, projectId, date, token]);
+
+  useEffect(() => {
+    if (!open) {
+      setSlotMenuOpen(false);
+      setSlotMenuTarget(null);
+    }
+  }, [open]);
 
   useEffect(() => {
     void load();
@@ -179,6 +192,18 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
     [token, agentId, load, onSaved],
   );
 
+  const openSlotMenu = useCallback(
+    (e: React.MouseEvent, slot: SlotCell) => {
+      if (!row) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSlotMenuPos({ x: e.clientX, y: e.clientY });
+      setSlotMenuTarget({ scope: "day-slot", agentId, slotIndex: slot.slotIndex, fte: row.fte });
+      setSlotMenuOpen(true);
+    },
+    [agentId, row],
+  );
+
   useEffect(() => {
     function up() {
       if (dragRef.current) {
@@ -207,7 +232,8 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
           </button>
         </div>
         <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-          {date} · Linksklick ziehen (ohne Textmarkierung). <strong>Doppelklick</strong> auf belegte Zelle = leeren.
+          {date} · Linksklick ziehen (ohne Textmarkierung). <strong>Doppelklick</strong> auf belegte Zelle = leeren. <strong>Rechtsklick</strong> auf eine
+          Viertelstunde: gleiches Schnellmenü wie in der Tagesmatrix (FTE, Kalender, …).
         </p>
         {status && <p className="status-bad">{status}</p>}
         {!row && data && <p className="muted">Agent nicht in diesem Tag / Projekt.</p>}
@@ -279,9 +305,10 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
                           }}
                           title={
                             calHint
-                              ? `Kalender: ${cal.label} (${cal.code}) · Schichtplan leer · Doppelklick = Zelle leeren`
-                              : "Doppelklick = Zelle leeren"
+                              ? `Kalender: ${cal.label} (${cal.code}) · Schichtplan leer · Doppelklick = Zelle leeren · Rechtsklick = Menü`
+                              : "Doppelklick = Zelle leeren · Rechtsklick = Menü"
                           }
+                          onContextMenu={(e) => openSlotMenu(e, slot)}
                           onMouseDown={(e) => {
                             if (e.button !== 0) return;
                             e.preventDefault();
@@ -315,6 +342,34 @@ export function RosterAgentDayModal({ token, open, projectId, date, agentId, age
             </div>
           </>
         )}
+        {row && data && slotMenuOpen && slotMenuTarget ? (
+          <RosterContextMenu
+            token={token}
+            open
+            x={slotMenuPos.x}
+            y={slotMenuPos.y}
+            onClose={() => {
+              setSlotMenuOpen(false);
+              setSlotMenuTarget(null);
+            }}
+            target={slotMenuTarget}
+            projectId={data.projectId}
+            date={data.date}
+            planner={data.planner}
+            fte={row.fte}
+            data={data}
+            menuZIndex={2300}
+            onDone={async () => {
+              await load();
+              onSaved();
+            }}
+            wholeDayBookingTypesState={{
+              loaded: plannerWholeDay.loaded,
+              types: plannerWholeDay.types,
+              error: plannerWholeDay.error,
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );
